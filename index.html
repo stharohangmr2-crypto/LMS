@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nimbus — Local-First LMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400..600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#1C1712',
+          paper: '#F1EBDA',
+          papercard: '#FBF8EF',
+          redline: '#A4321E',
+          kraft: '#E3D8B5',
+          graphite: '#74695A',
+          moss: '#3F5A44',
+          ochre: '#B8862B'
+        }
+      }
+    }
+  };
+</script>
+<style>
+  :root{ --ease: cubic-bezier(0.22, 1, 0.36, 1); }
+  * { font-family: 'Inter', sans-serif; }
+  .font-display { font-family: 'Fraunces', serif; }
+  .font-mono2 { font-family: 'IBM Plex Mono', monospace; }
+  .font-hand { font-family: 'Caveat', cursive; }
+  html, body { overflow-x: hidden; background: #F1EBDA; }
+  body { position: relative; }
+
+  body::after{
+    content:'';
+    position: fixed; inset: 0; pointer-events: none; z-index: 999;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj4KPGZpbHRlciBpZD0ibiI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuODUiIG51bU9jdGF2ZXM9IjMiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48ZmVDb2xvck1hdHJpeCB0eXBlPSJzYXR1cmF0ZSIgdmFsdWVzPSIwIi8+PC9maWx0ZXI+CjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNuKSIvPgo8L3N2Zz4=");
+    background-size: 180px 180px;
+    mix-blend-mode: overlay;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #d8cca4; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #c7b98a; }
+
+  @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toastIn {
+    0% { opacity: 0; transform: translate(-50%, 16px) scale(0.95); }
+    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+  @keyframes bellRing {
+    0%, 100% { transform: rotate(0); }
+    15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); }
+    45% { transform: rotate(9deg); } 60% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); }
+  }
+  @keyframes pulseDot {
+    0% { box-shadow: 0 0 0 0 rgba(164,50,30,0.45); }
+    70% { box-shadow: 0 0 0 6px rgba(164,50,30,0); }
+    100% { box-shadow: 0 0 0 0 rgba(164,50,30,0); }
+  }
+  .anim-fade-up { animation: fadeSlideUp 0.5s var(--ease) both; }
+  .anim-fade { animation: fadeIn 0.4s var(--ease) both; }
+  .anim-toast { animation: toastIn 0.4s var(--ease) both; }
+  .bell-ring { animation: bellRing 1.6s var(--ease); transform-origin: top center; }
+  .pulse-dot { animation: pulseDot 2.2s infinite; }
+  .stagger-1 { animation-delay: 0.05s; } .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; } .stagger-4 { animation-delay: 0.2s; }
+
+  .workspace-panel { transform: translateX(100%); transition: transform 0.45s var(--ease); }
+  .workspace-panel.open { transform: translateX(0); }
+  .workspace-overlay { opacity: 0; pointer-events: none; transition: opacity 0.35s var(--ease); }
+  .workspace-overlay.open { opacity: 1; pointer-events: auto; }
+
+  .notebook-paper {
+    background-image: repeating-linear-gradient(to bottom, #FBF8EF 0px, #FBF8EF 35px, #DCE3EE 36px);
+    background-attachment: local;
+    line-height: 36px;
+    padding-top: 8px;
+  }
+  .notebook-margin { position: absolute; top: 0; bottom: 0; left: 56px; width: 2px; background: linear-gradient(to bottom, rgba(164,50,30,0.4), rgba(164,50,30,0.75) 55%, rgba(164,50,30,0.4)); }
+
+  .field-underline { border-bottom: 2px solid rgba(28,23,18,0.15); transition: border-color 0.3s var(--ease); }
+  .field-underline:focus-within { border-color: #A4321E; }
+
+  .nav-item { transition: all 0.25s var(--ease); }
+  .card-hover { transition: all 0.3s var(--ease); }
+  .card-hover:hover { transform: translateY(-3px); box-shadow: 0 22px 38px -20px rgba(28,23,18,0.28); }
+  .btn-press { transition: all 0.25s var(--ease); }
+  .btn-press:active { transform: scale(0.96); }
+
+  .stamp {
+    display: inline-flex; align-items: center; position: relative; line-height: 1;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 4.5px 10px 4px; border-radius: 5px; border: 1.5px solid currentColor;
+    transform: rotate(-2deg);
+  }
+  .stamp::after {
+    content: ''; position: absolute; inset: 2.5px; border: 1px solid currentColor;
+    border-radius: 2.5px; opacity: 0.5; pointer-events: none;
+  }
+  .stamp-ink { color: #1C1712; background: rgba(28,23,18,0.05); }
+  .stamp-red { color: #A4321E; background: rgba(164,50,30,0.07); }
+  .stamp-moss { color: #3F5A44; background: rgba(63,90,68,0.08); }
+  .stamp-ochre { color: #B8862B; background: rgba(184,134,43,0.09); }
+
+  .ribbon { clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%); }
+
+  .code-editor {
+    background: #1C1712; color: #F1EBDA; font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.6; tab-size: 2;
+  }
+  .segmented button.active { background: #1C1712; color: #F1EBDA; }
+
+  .chat-scroll { scroll-behavior: smooth; }
+  .chat-bubble-in { border-bottom-left-radius: 4px; }
+  .chat-bubble-out { border-bottom-right-radius: 4px; }
+</style>
+</head>
+<body class="min-h-screen text-ink antialiased">
+
+<div id="app" class="relative"></div>
+<div id="toast-root" class="fixed bottom-8 left-1/2 z-[100]"></div>
+
+<script>
+/* ============================================================
+   NIMBUS — LOCAL-FIRST LMS
+   Design language: dark-ink chrome + warm paper pages, ledger &
+   ticket-stub motifs, inline SVG icons (zero external JS deps)
+   ============================================================ */
+const ICONS = {
+  menu: '<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12,5 19,12 12,19"/>',
+  arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12,19 5,12 12,5"/>',
+  check: '<polyline points="20,6 9,17 4,12"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 4 1.4 6.2 2 7H4c.6-.8 2-3 2-7"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
+  pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  listChecks: '<polyline points="3,7 4,8 6,6"/><line x1="9" y1="7" x2="21" y2="7"/><polyline points="3,13 4,14 6,12"/><line x1="9" y1="13" x2="21" y2="13"/><polyline points="3,19 4,20 6,18"/><line x1="9" y1="19" x2="21" y2="19"/>',
+  users: '<circle cx="8.5" cy="8" r="3.3"/><path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><circle cx="16.5" cy="9" r="2.6"/><path d="M15.5 14.2c2.5.4 4.5 2.6 4.5 5.8"/>',
+  trending: '<polyline points="3,17 9,11 13,15 21,7"/><polyline points="15,7 21,7 21,13"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/>',
+  fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>',
+  sparkle: '<path d="M12 2l1.6 5.9L19.5 9l-5.9 1.6L12 16.5l-1.6-5.9L4.5 9l5.9-1.1z"/>',
+  userRound: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.2 3.6-6.5 8-6.5s8 2.3 8 6.5"/>',
+  eye: '<path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7-10.5-7-10.5-7z"/><circle cx="12" cy="12" r="3.2"/>',
+  eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10.5 7 10.5 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.7 8.3 1.5 12 1.5 12s4 7 10.5 7c1.4 0 2.7-.3 3.8-.8"/><path d="M9.5 9.8a3.2 3.2 0 0 0 4.6 4.5"/>',
+  lock: '<rect x="4.5" y="11" width="15" height="9.5" rx="2.2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><polyline points="8,12.5 11,15.5 16,9.5"/>',
+  sendHorizontal: '<path d="M3 11l18-8-8 18-2-8z"/><path d="M21 3L11 13"/>',
+  chat: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+  code: '<polyline points="16,18 22,12 16,6"/><polyline points="8,6 2,12 8,18"/>',
+  alertTriangle: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  eyePreview: '<path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7-10.5-7-10.5-7z"/><circle cx="12" cy="12" r="3.2"/>',
+  play: '<polygon points="6,4 20,12 6,20"/>',
+  clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/>'
+};
+function ic(name, cls) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="' + (cls || '') + '">' + (ICONS[name] || '') + '</svg>';
+}
+function stamp(text, tone) {
+  const cls = tone === 'red' ? 'stamp-red' : tone === 'moss' ? 'stamp-moss' : tone === 'ochre' ? 'stamp-ochre' : 'stamp-ink';
+  return '<span class="stamp ' + cls + '">' + text + '</span>';
+}
+function notch() {
+  return '<div class="absolute -top-[7px] left-6 w-3.5 h-3.5 rounded-full bg-paper"></div><div class="absolute -top-[7px] right-6 w-3.5 h-3.5 rounded-full bg-paper"></div>';
+}
+
+// ============================================================
+// STORAGE / DATA MODEL
+// ============================================================
+const STORAGE_KEYS = {
+  assignments: 'nimbus_assignments',
+  session: 'nimbus_session',
+  seen: 'nimbus_seen_map',
+  students: 'nimbus_students',
+  submissions: 'nimbus_submissions',
+  messages: 'nimbus_messages'
+};
+const ADMIN_ID = 'rohan';
+const ADMIN_PW = 'MJRR7800MI';
+const ADMIN_NAME = 'Rohan';
+
+function seedAssignments() {
+  return [
+    {
+      id: 'hw_1001', title: 'The Physics of Bridges', type: 'written',
+      description: 'Write a 150-200 word explanation of how a truss bridge distributes load. Use at least two real-world examples (e.g. the Sydney Harbour Bridge) and describe what would happen if one support member failed.',
+      objectives: ['Explain compression vs. tension in a structure', 'Reference two real bridges by name', 'Predict a failure scenario'],
+      createdAt: Date.now() - 1000 * 60 * 60 * 26
+    },
+    {
+      id: 'hw_1002', title: 'Build a Profile Card', type: 'code', codeLang: 'html',
+      description: 'Write the HTML for a simple profile card: a heading with a name, a paragraph bio, and a list of 3 skills. Use semantic tags — no styling needed yet.',
+      objectives: ['Use a heading tag for the name', 'Use a paragraph tag for the bio', 'Use a list with 3 items'],
+      starter: '<!-- write your profile card markup here -->\n<div class="card">\n\n</div>',
+      createdAt: Date.now() - 1000 * 60 * 60 * 3
+    }
+  ];
+}
+function getAssignments() {
+  const raw = localStorage.getItem(STORAGE_KEYS.assignments);
+  if (!raw) { const seed = seedAssignments(); localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(seed)); return seed; }
+  try { return JSON.parse(raw); } catch (e) { return seedAssignments(); }
+}
+function saveAssignments(list) { localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(list)); }
+
+function getStudents() {
+  const raw = localStorage.getItem(STORAGE_KEYS.students);
+  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+}
+function saveStudents(list) { localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(list)); }
+function findStudent(id) { return getStudents().find(s => s.id === (id || '').toLowerCase()) || null; }
+
+function getSubmissions() {
+  const raw = localStorage.getItem(STORAGE_KEYS.submissions);
+  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+}
+function saveSubmissions(list) { localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(list)); }
+function getSubmission(assignmentId, studentId) {
+  return getSubmissions().find(s => s.assignmentId === assignmentId && s.studentId === studentId) || null;
+}
+function upsertSubmission(assignmentId, studentId, patch) {
+  const list = getSubmissions();
+  const idx = list.findIndex(s => s.assignmentId === assignmentId && s.studentId === studentId);
+  if (idx > -1) { list[idx] = Object.assign({}, list[idx], patch); }
+  else { list.push(Object.assign({ id: 'sub_' + assignmentId + '_' + studentId, assignmentId, studentId }, patch)); }
+  saveSubmissions(list);
+}
+
+function getMessages() {
+  const raw = localStorage.getItem(STORAGE_KEYS.messages);
+  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+}
+function saveMessages(list) { localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(list)); }
+function getThread(studentId) { return getMessages().filter(m => m.studentId === studentId).sort((a, b) => a.ts - b.ts); }
+function sendMessage(studentId, sender, text) {
+  const list = getMessages();
+  list.push({ id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), studentId, sender, text, ts: Date.now(), readByAdmin: sender === 'admin', readByStudent: sender === 'learner' });
+  saveMessages(list);
+}
+function unreadFromStudent(studentId) { return getThread(studentId).filter(m => m.sender === 'learner' && !m.readByAdmin).length; }
+function unreadFromAdminTotal() { return getStudents().reduce((sum, s) => sum + unreadFromStudent(s.id), 0); }
+function unreadFromAdmin(studentId) { return getThread(studentId).filter(m => m.sender === 'admin' && !m.readByStudent).length; }
+function markThreadRead(studentId, asRole) {
+  const list = getMessages();
+  list.forEach(m => {
+    if (m.studentId !== studentId) return;
+    if (asRole === 'admin' && m.sender === 'learner') m.readByAdmin = true;
+    if (asRole === 'learner' && m.sender === 'admin') m.readByStudent = true;
+  });
+  saveMessages(list);
+}
+
+function getSeenMap() {
+  const raw = localStorage.getItem(STORAGE_KEYS.seen);
+  try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+function saveSeenMap(map) { localStorage.setItem(STORAGE_KEYS.seen, JSON.stringify(map)); }
+function getSeenIds(studentId) { const map = getSeenMap(); return map[studentId] || []; }
+function markAllSeen(studentId) { const map = getSeenMap(); map[studentId] = getAssignments().map(a => a.id); saveSeenMap(map); }
+
+function getSession() { const raw = sessionStorage.getItem(STORAGE_KEYS.session); try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
+function setSession(s) { sessionStorage.setItem(STORAGE_KEYS.session, JSON.stringify(s)); }
+function clearSession() { sessionStorage.removeItem(STORAGE_KEYS.session); }
+
+function timeAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+function formatDate(ts) { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+function formatDateTime(ts) { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str == null ? '' : str; return div.innerHTML; }
+function capitalize(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
+function isWithinDays(ts, days) { return ts && (Date.now() - ts) < days * 24 * 60 * 60 * 1000; }
+function isThisCalendarMonth(ts) {
+  if (!ts) return false;
+  const d = new Date(ts), now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+// Classify a student's status on one assignment: 'pending' | 'submitted' | 'checked' | 'revision'
+function submissionStatus(assignmentId, studentId) {
+  const sub = getSubmission(assignmentId, studentId);
+  return sub ? sub.status : 'pending';
+}
+function studentProgress(studentId) {
+  const assignments = getAssignments();
+  const out = { total: assignments.length, pending: 0, submitted: 0, checked: 0, revision: 0 };
+  assignments.forEach(a => {
+    const st = submissionStatus(a.id, studentId);
+    out[st] = (out[st] || 0) + 1;
+  });
+  return out;
+}
+
+function showToast(message) {
+  const root = document.getElementById('toast-root');
+  const el = document.createElement('div');
+  el.className = 'anim-toast bg-ink text-paper px-5 py-3.5 rounded-2xl shadow-2xl shadow-black/40 flex items-center gap-2.5 whitespace-nowrap';
+  el.innerHTML = '<span class="flex h-5 w-5 items-center justify-center rounded-full border border-paper/30 shrink-0">' + ic('check', 'w-3 h-3 text-paper') + '</span><span class="text-sm font-medium">' + message + '</span>';
+  root.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'all 0.3s ease';
+    el.style.opacity = '0';
+    el.style.transform = 'translate(-50%, 8px) scale(0.96)';
+    setTimeout(() => el.remove(), 320);
+  }, 2600);
+}
+
+let currentRoute = 'login';
+let authMode = 'login'; // 'login' | 'signup'
+let activeWorkspaceId = null;
+let activeStudentDetailId = null; // admin viewing a student
+let activeReviewKey = null; // { assignmentId, studentId } admin reviewing a submission
+let studentDetailTab = 'progress'; // 'progress' | 'chat' inside student detail
+let editorPreviewMode = 'code'; // mobile toggle inside workspace for code assignments
+let adminNav = 'dashboard';
+let learnerNav = 'dashboard';
+let bannerDismissed = false;
+
+function navigate(route) { currentRoute = route; render(); }
+
+function render() {
+  const app = document.getElementById('app');
+  const session = getSession();
+  if (!session && currentRoute !== 'login') currentRoute = 'login';
+  if (currentRoute === 'login') app.innerHTML = renderLogin();
+  else if (currentRoute === 'admin') app.innerHTML = renderAdmin();
+  else if (currentRoute === 'learner') app.innerHTML = renderLearner();
+  bindEvents();
+  if (activeWorkspaceId) mountWorkspace(activeWorkspaceId);
+  if (activeStudentDetailId) mountStudentDetail(activeStudentDetailId);
+  if (activeReviewKey) mountSubmissionReview(activeReviewKey.assignmentId, activeReviewKey.studentId);
+}
+
+// ============================================================
+// LOGIN / SIGNUP — dark ink cover, paper ledger card, ribbon bookmark
+// ============================================================
+function renderLogin() {
+  if (authMode === 'signup') return renderSignup();
+  return `
+  <div class="min-h-screen w-full flex items-center justify-center px-4 py-10 relative overflow-hidden bg-ink">
+    <div class="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-redline/10 blur-[110px]"></div>
+    <div class="absolute -bottom-32 -right-24 w-[480px] h-[480px] rounded-full bg-paper/10 blur-[110px]"></div>
+
+    <div class="w-full max-w-md relative anim-fade-up">
+      <div class="flex flex-col items-center gap-3 mb-9">
+        <div class="w-12 h-12 rounded-2xl bg-paper flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(0,0,0,0.6)]">
+          <span class="font-display italic font-semibold text-ink text-xl">N</span>
+        </div>
+        <div class="text-center">
+          <h1 class="font-display italic text-3xl text-paper tracking-tight">Nimbus</h1>
+          <p class="font-mono2 text-[10px] tracking-[0.2em] uppercase text-paper/40 mt-2">No cloud · No subscription</p>
+        </div>
+      </div>
+
+      <div class="relative bg-papercard rounded-[1.75rem] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.6)] p-8 sm:p-10 border border-ink/5">
+        <div class="ribbon absolute -top-3 left-8 w-6 h-10 bg-redline"></div>
+
+        <div class="mb-7">
+          <h2 class="font-display text-2xl text-ink font-semibold">Sign in</h2>
+          <p class="text-graphite text-sm mt-1.5">Enter your ID to open your workspace.</p>
+        </div>
+
+        <form id="login-form" class="space-y-6" autocomplete="off">
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">ID</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('userRound', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required autocomplete="off" type="text" id="login-uid" placeholder="e.g. Rohan"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Password</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('lock', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required type="password" id="login-password" placeholder="••••••••"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+              <button type="button" id="toggle-password" class="text-graphite/50 hover:text-ink transition-colors shrink-0">
+                ${ic('eye', 'w-4 h-4')}
+              </button>
+            </div>
+          </div>
+
+          <p id="login-error" class="hidden text-xs font-medium text-redline bg-redline/5 border border-redline/25 rounded-xl px-3.5 py-2.5 items-center gap-2">
+            ${ic('x', 'w-3.5 h-3.5 shrink-0')} <span>Enter an ID to continue.</span>
+          </p>
+
+          <button type="submit" class="btn-press group w-full py-4 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-[0_15px_30px_-10px_rgba(0,0,0,0.45)]">
+            Log In <span class="transition-transform duration-300 group-hover:translate-x-1">${ic('arrowRight', 'w-4 h-4')}</span>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-6 border-t border-dashed border-ink/15 text-center">
+          <p class="text-sm text-graphite">New here?</p>
+          <button type="button" id="show-signup" class="btn-press mt-2 w-full py-3.5 rounded-full font-semibold text-sm text-ink bg-transparent border-2 border-ink/15 hover:border-ink/30 hover:bg-ink/[0.03] transition-all duration-300 flex items-center justify-center gap-2">
+            ${ic('sparkle', 'w-4 h-4')} Sign Up as a Student
+          </button>
+        </div>
+
+        <p class="text-center font-mono2 text-[10px] tracking-wide text-graphite/50 mt-7 leading-relaxed">ADMIN ACCESS IS CREDENTIAL-GATED<br/>STUDENTS SIGN UP TO GET AN ID</p>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+function renderSignup() {
+  return `
+  <div class="min-h-screen w-full flex items-center justify-center px-4 py-10 relative overflow-hidden bg-ink">
+    <div class="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-redline/10 blur-[110px]"></div>
+    <div class="absolute -bottom-32 -right-24 w-[480px] h-[480px] rounded-full bg-paper/10 blur-[110px]"></div>
+
+    <div class="w-full max-w-md relative anim-fade-up">
+      <div class="flex flex-col items-center gap-3 mb-9">
+        <div class="w-12 h-12 rounded-2xl bg-paper flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(0,0,0,0.6)]">
+          <span class="font-display italic font-semibold text-ink text-xl">N</span>
+        </div>
+        <div class="text-center">
+          <h1 class="font-display italic text-3xl text-paper tracking-tight">Nimbus</h1>
+          <p class="font-mono2 text-[10px] tracking-[0.2em] uppercase text-paper/40 mt-2">Student sign up</p>
+        </div>
+      </div>
+
+      <div class="relative bg-papercard rounded-[1.75rem] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.6)] p-8 sm:p-10 border border-ink/5">
+        <div class="ribbon absolute -top-3 left-8 w-6 h-10 bg-redline"></div>
+
+        <button type="button" id="back-to-login" class="flex items-center gap-1.5 text-graphite hover:text-ink text-xs font-medium font-mono2 uppercase tracking-wide mb-5 -mt-1">
+          ${ic('arrowLeft', 'w-3.5 h-3.5')} Back to sign in
+        </button>
+
+        <div class="mb-7">
+          <h2 class="font-display text-2xl text-ink font-semibold">Create your ID</h2>
+          <p class="text-graphite text-sm mt-1.5">Set up a student account to receive homework.</p>
+        </div>
+
+        <form id="signup-form" class="space-y-5" autocomplete="off">
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Full Name</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('userRound', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required autocomplete="off" type="text" id="signup-name" placeholder="e.g. Simran Gurung"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Choose an ID</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('pencil', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required autocomplete="off" type="text" id="signup-uid" placeholder="e.g. simran"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Password</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('lock', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required type="password" id="signup-password" placeholder="••••••••"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Confirm Password</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('lock', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required type="password" id="signup-password2" placeholder="••••••••"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+
+          <p id="signup-error" class="hidden text-xs font-medium text-redline bg-redline/5 border border-redline/25 rounded-xl px-3.5 py-2.5 items-center gap-2">
+            ${ic('x', 'w-3.5 h-3.5 shrink-0')} <span>Something's missing.</span>
+          </p>
+
+          <button type="submit" class="btn-press group w-full py-4 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-[0_15px_30px_-10px_rgba(0,0,0,0.45)]">
+            Create Account <span class="transition-transform duration-300 group-hover:translate-x-1">${ic('arrowRight', 'w-4 h-4')}</span>
+          </button>
+        </form>
+
+        <p class="text-center font-mono2 text-[10px] tracking-wide text-graphite/50 mt-7 leading-relaxed">YOUR ID IS HOW YOUR TEACHER FINDS YOU<br/>PICK SOMETHING YOU'LL REMEMBER</p>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+// ============================================================
+// MOBILE HEADER
+// ============================================================
+function renderMobileHeader(role, userName, showDot) {
+  const initials = userName ? userName.charAt(0).toUpperCase() : (role === 'admin' ? 'A' : 'L');
+  return `
+  <header class="md:hidden sticky top-0 z-30 bg-paper/95 backdrop-blur border-b border-ink/10 h-14 flex items-center justify-between px-4">
+    <button id="hamburger-btn" class="w-9 h-9 -ml-1.5 rounded-full hover:bg-ink/5 active:scale-95 transition flex items-center justify-center text-ink">
+      ${ic('menu', 'w-5 h-5')}
+    </button>
+    <div class="flex items-center gap-2">
+      <div class="w-6 h-6 rounded-lg bg-ink flex items-center justify-center">
+        <span class="font-display italic font-bold text-paper text-[11px]">N</span>
+      </div>
+      <span class="font-display font-bold text-sm text-ink tracking-tight">Nimbus</span>
+    </div>
+    <div class="relative">
+      <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center text-xs font-semibold">${initials}</div>
+      ${showDot ? `<span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-redline ring-2 ring-paper pulse-dot"></span>` : ''}
+    </div>
+  </header>
+  `;
+}
+
+// ============================================================
+// SIDEBAR — dark ink chrome (desktop rail / mobile drawer)
+// ============================================================
+function renderSidebar(role, activeNav, userName, session) {
+  const isAdmin = role === 'admin';
+  let navItems;
+  if (isAdmin) {
+    const pendingReview = getSubmissions().filter(s => s.status === 'submitted').length;
+    const unreadMsgs = unreadFromAdminTotal();
+    navItems = [
+      { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { id: 'create', label: 'Create Homework', icon: 'pencil' },
+      { id: 'tasks', label: 'Published Tasks', icon: 'listChecks', badge: pendingReview, badgeDot: pendingReview > 0 },
+      { id: 'students', label: 'Students', icon: 'users', badge: unreadMsgs, badgeDot: unreadMsgs > 0 }
+    ];
+  } else {
+    const studentId = session?.id;
+    const progress = studentId ? studentProgress(studentId) : { pending: 0, revision: 0 };
+    const homeworkBadge = (progress.pending || 0) + (progress.revision || 0);
+    const unread = studentId ? unreadFromAdmin(studentId) : 0;
+    navItems = [
+      { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { id: 'homework', label: 'Homework', icon: 'pencil', badge: homeworkBadge, badgeDot: progress.revision > 0 },
+      { id: 'notification', label: 'Notification', icon: 'chat', badge: unread, badgeDot: unread > 0 }
+    ];
+  }
+
+  return `
+  <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 md:sticky md:top-0 h-screen z-50 md:z-auto w-[280px] md:w-64 shrink-0 bg-ink text-paper flex flex-col py-5 px-4 md:px-5 -translate-x-full md:translate-x-0 transition-transform duration-300 shadow-2xl md:shadow-none">
+    <div class="flex items-center justify-between mb-7 px-1">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-paper flex items-center justify-center shrink-0">
+          <span class="font-display italic font-bold text-ink text-sm">N</span>
+        </div>
+        <span class="font-display italic font-bold text-lg tracking-tight text-paper">Nimbus</span>
+      </div>
+      <button id="close-sidebar-btn" class="md:hidden w-8 h-8 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/50">
+        ${ic('x', 'w-4 h-4')}
+      </button>
+    </div>
+
+    <div class="flex items-center gap-3 mb-6 px-3 py-3 rounded-2xl bg-paper/[0.06] border border-paper/10">
+      <div class="w-9 h-9 rounded-full bg-paper text-ink flex items-center justify-center font-semibold text-sm shrink-0">
+        ${userName ? userName.charAt(0).toUpperCase() : (isAdmin ? 'A' : 'L')}
+      </div>
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-paper truncate">${escapeHtml(userName || (isAdmin ? 'Admin' : 'Learner'))}</p>
+        <p class="font-mono2 text-[10px] tracking-wide uppercase text-paper/40 mt-0.5">${isAdmin ? 'Teacher / Admin' : 'Learner'}</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 space-y-1 overflow-y-auto">
+      ${navItems.map(item => `
+        <button data-nav="${item.id}" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium border-l-2
+          ${activeNav === item.id ? 'bg-paper/10 text-paper border-redline' : 'text-paper/45 border-transparent hover:bg-paper/5 hover:text-paper/80'}">
+          ${ic(item.icon, 'w-[18px] h-[18px] shrink-0')}
+          <span class="flex-1 text-left">${item.label}</span>
+          ${item.badge ? `<span class="w-5 h-5 rounded-full font-mono2 text-[10px] font-bold flex items-center justify-center ${item.badgeDot ? 'bg-redline text-paper pulse-dot' : 'bg-paper/10 text-paper/60'}">${item.badge}</span>` : ''}
+        </button>
+      `).join('')}
+    </nav>
+
+    <div class="pt-4 mt-2 border-t border-dashed border-paper/15">
+      <button id="logout-btn" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-paper/45 hover:bg-redline/10 hover:text-redline">
+        ${ic('logout', 'w-[18px] h-[18px] shrink-0')}
+        <span>Log Out</span>
+      </button>
+    </div>
+  </aside>
+  <div id="mobile-sidebar-backdrop" class="fixed inset-0 bg-ink/60 backdrop-blur-sm z-40 opacity-0 pointer-events-none md:hidden transition-opacity duration-300"></div>
+  `;
+}
+
+function openSidebarDrawer() {
+  const panel = document.getElementById('mobile-sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  if (panel) { panel.classList.remove('-translate-x-full'); panel.classList.add('translate-x-0'); }
+  if (backdrop) { backdrop.classList.remove('opacity-0', 'pointer-events-none'); backdrop.classList.add('opacity-100', 'pointer-events-auto'); }
+}
+function closeSidebarDrawer() {
+  const panel = document.getElementById('mobile-sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  if (panel) { panel.classList.add('-translate-x-full'); panel.classList.remove('translate-x-0'); }
+  if (backdrop) { backdrop.classList.add('opacity-0', 'pointer-events-none'); backdrop.classList.remove('opacity-100', 'pointer-events-auto'); }
+}
+
+// ============================================================
+// ADMIN — shell + tab router
+// ============================================================
+function renderAdmin() {
+  const session = getSession();
+  return `
+  <div class="min-h-screen bg-paper">
+    ${renderMobileHeader('admin', session?.name, unreadFromAdminTotal() > 0)}
+    <div class="flex">
+      ${renderSidebar('admin', adminNav, session?.name, session)}
+      <main class="flex-1 min-w-0">
+        <div class="max-w-6xl mx-auto px-5 sm:px-8 py-6 sm:py-10">
+          ${adminNav === 'create' ? renderAdminCreate(session)
+            : adminNav === 'tasks' ? renderAdminTasks(session)
+            : adminNav === 'students' ? renderAdminStudents(session)
+            : renderAdminDashboard(session)}
+        </div>
+      </main>
+    </div>
+  </div>
+  `;
+}
+
+function adminPageHeader(title, subtitle) {
+  return `
+  <div class="flex items-center justify-between mb-8 anim-fade-up gap-4">
+    <div class="min-w-0">
+      <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink tracking-tight">${title}</h1>
+      <p class="text-graphite text-sm mt-1.5">${subtitle}</p>
+    </div>
+    <div class="hidden sm:flex items-center gap-2 font-mono2 text-[10px] tracking-widest uppercase text-graphite bg-papercard border border-ink/10 px-3.5 py-2 rounded-full shrink-0">
+      <span class="w-1.5 h-1.5 rounded-full bg-ink"></span> Stored on device
+    </div>
+  </div>
+  `;
+}
+
+// ---------- DASHBOARD ----------
+function renderAdminDashboard(session) {
+  const students = getStudents();
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+  const submissions = getSubmissions();
+
+  const studentsThisMonth = students.filter(s => isThisCalendarMonth(s.joinedAt)).length;
+  const assignmentsThisWeek = assignments.filter(a => isWithinDays(a.createdAt, 7)).length;
+  const checkedThisWeek = submissions.filter(s => (s.status === 'checked' || s.status === 'revision') && isWithinDays(s.checkedAt, 7)).length;
+
+  // Build per-assignment breakdown of who has / hasn't done it
+  const breakdown = assignments.map(a => {
+    const notDone = [];
+    const done = [];
+    students.forEach(st => {
+      const sub = getSubmission(a.id, st.id);
+      if (!sub) notDone.push(st);
+      else done.push({ student: st, sub });
+    });
+    return { assignment: a, notDone, done };
+  });
+
+  return `
+  ${adminPageHeader('Good to see you, ' + escapeHtml((session?.name || 'Admin').split(' ')[0]), "Here's what's happening across your class this week.")}
+
+  <div class="grid grid-cols-3 gap-3 sm:gap-4 mb-8 anim-fade-up stagger-1">
+    <div class="bg-papercard rounded-2xl border border-ink/8 p-4 sm:p-5 card-hover">
+      <p class="text-3xl sm:text-4xl font-display font-semibold text-ink">${studentsThisMonth}</p>
+      <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite mt-1 leading-snug">Students joined this month</p>
+    </div>
+    <div class="bg-papercard rounded-2xl border border-ink/8 p-4 sm:p-5 card-hover">
+      <p class="text-3xl sm:text-4xl font-display font-semibold text-ink">${assignmentsThisWeek}</p>
+      <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite mt-1 leading-snug">Homework given this week</p>
+    </div>
+    <div class="bg-papercard rounded-2xl border border-ink/8 p-4 sm:p-5 card-hover">
+      <p class="text-3xl sm:text-4xl font-display font-semibold text-ink">${checkedThisWeek}</p>
+      <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite mt-1 leading-snug">Homework checked this week</p>
+    </div>
+  </div>
+
+  ${students.length === 0 ? `
+    <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center anim-fade-up stagger-2">
+      <div class="text-ink/25 mx-auto mb-2 w-6 h-6">${ic('users', 'w-6 h-6 mx-auto')}</div>
+      <p class="text-sm text-graphite">No students have signed up yet. Share your Nimbus link so they can create an ID.</p>
+    </div>
+  ` : `
+  <div class="anim-fade-up stagger-2">
+    <div class="flex items-center gap-2 mb-5">
+      <div class="w-8 h-8 rounded-xl bg-ink/5 flex items-center justify-center">${ic('listChecks', 'w-4 h-4 text-ink/70')}</div>
+      <h2 class="font-display font-semibold text-lg text-ink">Homework Status, by Assignment</h2>
+    </div>
+    <div class="space-y-4">
+      ${breakdown.length === 0 ? `
+        <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center">
+          <p class="text-sm text-graphite">No homework published yet.</p>
+        </div>
+      ` : breakdown.map(b => `
+        <div class="relative bg-papercard rounded-2xl border border-dashed border-ink/20 p-5 pt-6 card-hover">
+          ${notch()}
+          <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <h3 class="font-semibold text-ink text-sm">${escapeHtml(b.assignment.title)}</h3>
+            <span class="font-mono2 text-[10px] text-graphite/70 tracking-wide">${b.done.length}/${students.length} DONE</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p class="font-mono2 text-[10px] font-semibold text-redline uppercase tracking-widest mb-2">Haven't Done It</p>
+              ${b.notDone.length === 0 ? `<p class="text-xs text-graphite/70 italic">Everyone's turned this in.</p>` : `
+                <div class="flex flex-wrap gap-1.5">
+                  ${b.notDone.map(st => `<span class="text-xs font-medium bg-redline/6 text-redline border border-redline/20 rounded-full px-2.5 py-1">${escapeHtml(st.name)}</span>`).join('')}
+                </div>
+              `}
+            </div>
+            <div>
+              <p class="font-mono2 text-[10px] font-semibold text-moss uppercase tracking-widest mb-2">Have Done It</p>
+              ${b.done.length === 0 ? `<p class="text-xs text-graphite/70 italic">No submissions yet.</p>` : `
+                <div class="flex flex-wrap gap-1.5">
+                  ${b.done.map(d => `<span class="text-xs font-medium bg-moss/6 text-moss border border-moss/20 rounded-full px-2.5 py-1">${escapeHtml(d.student.name)}${d.sub.status === 'checked' ? ' ✓' : d.sub.status === 'revision' ? ' ⚠' : ''}</span>`).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  `}
+  `;
+}
+
+// ---------- CREATE HOMEWORK ----------
+function renderAdminCreate(session) {
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+
+  return `
+  ${adminPageHeader('Create Homework', 'Publish a new assignment — written or a coding exercise.')}
+
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <div class="lg:col-span-2 anim-fade-up stagger-1">
+      <div class="bg-papercard rounded-[1.75rem] border border-ink/8 shadow-sm p-6 sm:p-7 lg:sticky lg:top-8">
+        <div class="flex items-center gap-2 mb-5">
+          <div class="w-8 h-8 rounded-xl bg-ink/5 flex items-center justify-center">${ic('pencil', 'w-4 h-4 text-ink/70')}</div>
+          <h2 class="font-display font-semibold text-lg text-ink">New Homework</h2>
+        </div>
+
+        <form id="create-homework-form" class="space-y-4">
+          <div>
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Format</label>
+            <div class="segmented flex items-center gap-1.5 bg-paper/60 border border-ink/10 rounded-full p-1">
+              <button type="button" data-format="written" class="format-btn active flex-1 py-2 rounded-full text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">${ic('fileText', 'w-3.5 h-3.5')} Written</button>
+              <button type="button" data-format="code" class="format-btn flex-1 py-2 rounded-full text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">${ic('code', 'w-3.5 h-3.5')} Code</button>
+            </div>
+            <input type="hidden" id="hw-format" value="written" />
+          </div>
+
+          <div>
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Title</label>
+            <input required id="hw-title" type="text" placeholder="e.g. Essay on Renewable Energy"
+              class="w-full px-4 py-3 rounded-xl bg-paper/50 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors" />
+          </div>
+
+          <div id="hw-code-lang-wrap" class="hidden">
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Language</label>
+            <div class="segmented flex items-center gap-1.5 bg-paper/60 border border-ink/10 rounded-full p-1">
+              <button type="button" data-lang="html" class="lang-btn active flex-1 py-2 rounded-full text-xs font-semibold transition-colors">HTML</button>
+              <button type="button" data-lang="css" class="lang-btn flex-1 py-2 rounded-full text-xs font-semibold transition-colors">CSS</button>
+              <button type="button" data-lang="js" class="lang-btn flex-1 py-2 rounded-full text-xs font-semibold transition-colors">JavaScript</button>
+            </div>
+            <input type="hidden" id="hw-lang" value="html" />
+          </div>
+
+          <div>
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Instructions</label>
+            <textarea required id="hw-description" rows="5" placeholder="Describe exactly what students should write, research, build, or solve..."
+              class="w-full px-4 py-3 rounded-xl bg-paper/50 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors resize-none"></textarea>
+          </div>
+
+          <div id="hw-starter-wrap" class="hidden">
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Starter Code <span class="normal-case font-sans text-graphite/70">(optional, pre-fills the student's editor)</span></label>
+            <textarea id="hw-starter" rows="5" placeholder="&lt;div class=&quot;card&quot;&gt;&#10;&#10;&lt;/div&gt;"
+              class="code-editor w-full px-4 py-3 rounded-xl outline-none text-xs resize-none"></textarea>
+          </div>
+
+          <div>
+            <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Objectives <span class="normal-case font-sans text-graphite/70">(one per line, optional)</span></label>
+            <textarea id="hw-objectives" rows="3" placeholder="Identify the main cause&#10;Cite one source&#10;Conclude with a recommendation"
+              class="w-full px-4 py-3 rounded-xl bg-paper/50 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors resize-none"></textarea>
+          </div>
+
+          <button type="submit" class="btn-press w-full mt-1 py-3.5 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-lg shadow-black/15">
+            ${ic('send', 'w-4 h-4')} Assign to Class
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="lg:col-span-3 anim-fade-up stagger-2">
+      <div class="flex items-center gap-2 mb-5">
+        <div class="w-8 h-8 rounded-xl bg-ink/5 flex items-center justify-center">${ic('listChecks', 'w-4 h-4 text-ink/70')}</div>
+        <h2 class="font-display font-semibold text-lg text-ink">Recently Published</h2>
+      </div>
+
+      <div class="space-y-4">
+        ${assignments.length === 0 ? `
+          <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center">
+            <p class="text-sm text-graphite">No homework published yet. Create one to get started.</p>
+          </div>
+        ` : assignments.map(a => `
+          <div class="relative bg-papercard rounded-2xl border border-dashed border-ink/20 p-5 pt-6 card-hover flex items-start justify-between gap-4">
+            ${notch()}
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 class="font-semibold text-ink text-sm truncate">${escapeHtml(a.title)}</h3>
+                ${a.type === 'code' ? stamp((a.codeLang || 'html').toUpperCase(), 'ochre') : stamp('Written', 'ink')}
+              </div>
+              <p class="text-xs text-graphite line-clamp-1">${escapeHtml(a.description)}</p>
+              <p class="font-mono2 text-[10px] text-graphite/70 mt-2 tracking-wide">PUBLISHED ${timeAgo(a.createdAt).toUpperCase()}</p>
+            </div>
+            <div class="w-9 h-9 rounded-full bg-ink/5 flex items-center justify-center shrink-0">
+              ${ic(a.type === 'code' ? 'code' : 'fileText', 'w-4 h-4 text-ink/60')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+// ---------- PUBLISHED TASKS ----------
+function statusChip(status) {
+  if (status === 'checked') return stamp('Checked ✓', 'moss');
+  if (status === 'revision') return stamp('Needs Revision', 'red');
+  if (status === 'submitted') return stamp('Awaiting Review', 'ochre');
+  return stamp('Not Done', 'ink');
+}
+
+function renderAdminTasks(session) {
+  const students = getStudents();
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+
+  return `
+  ${adminPageHeader('Published Tasks', 'Every assignment, and exactly who has done it, checked it, or still needs to.')}
+
+  ${students.length === 0 ? `
+    <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center anim-fade-up">
+      <p class="text-sm text-graphite">No students yet — once someone signs up, their progress on each task will show here.</p>
+    </div>
+  ` : assignments.length === 0 ? `
+    <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center anim-fade-up">
+      <p class="text-sm text-graphite">No homework published yet.</p>
+    </div>
+  ` : `
+  <div class="space-y-4 anim-fade-up stagger-1">
+    ${assignments.map(a => {
+      const rows = students.map(st => ({ student: st, sub: getSubmission(a.id, st.id) }));
+      const doneCount = rows.filter(r => r.sub).length;
+      return `
+      <div class="bg-papercard rounded-2xl border border-ink/8 shadow-sm overflow-hidden">
+        <button data-toggle-task="${a.id}" class="task-toggle w-full flex items-center justify-between gap-4 p-5 text-left">
+          <div class="min-w-0 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-ink/5 flex items-center justify-center shrink-0">${ic(a.type === 'code' ? 'code' : 'fileText', 'w-4 h-4 text-ink/60')}</div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h3 class="font-semibold text-ink text-sm">${escapeHtml(a.title)}</h3>
+                ${a.type === 'code' ? stamp((a.codeLang || 'html').toUpperCase(), 'ochre') : stamp('Written', 'ink')}
+              </div>
+              <p class="font-mono2 text-[10px] text-graphite/70 mt-1.5 tracking-wide">${doneCount}/${students.length} DONE · PUBLISHED ${timeAgo(a.createdAt).toUpperCase()}</p>
+            </div>
+          </div>
+          <span class="task-chevron shrink-0 text-graphite transition-transform duration-300">${ic('arrowRight', 'w-4 h-4')}</span>
+        </button>
+        <div id="task-body-${a.id}" class="task-body hidden border-t border-dashed border-ink/10 px-5 py-4 space-y-2.5">
+          ${rows.map(r => `
+            <div class="flex items-center justify-between gap-3 bg-paper/40 rounded-xl px-4 py-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-7 h-7 rounded-full bg-ink text-paper flex items-center justify-center text-[11px] font-semibold shrink-0">${escapeHtml(r.student.name.charAt(0).toUpperCase())}</div>
+                <span class="text-sm font-medium text-ink truncate">${escapeHtml(r.student.name)}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${statusChip(r.sub ? r.sub.status : 'pending')}
+                ${r.sub ? `<button data-review="${a.id}|${r.student.id}" class="btn-press font-mono2 text-[10px] uppercase tracking-wide font-semibold text-ink bg-ink/5 hover:bg-ink/10 rounded-full px-3 py-1.5">Review</button>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      `;
+    }).join('')}
+  </div>
+  `}
+  `;
+}
+
+// ---------- STUDENTS ----------
+function renderAdminStudents(session) {
+  const students = getStudents().slice().sort((a, b) => b.joinedAt - a.joinedAt);
+
+  return `
+  ${adminPageHeader('Students', 'Everyone registered in your class. Tap a student to see their progress and message them.')}
+
+  ${students.length === 0 ? `
+    <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center anim-fade-up">
+      <div class="text-ink/25 mx-auto mb-2 w-6 h-6">${ic('users', 'w-6 h-6 mx-auto')}</div>
+      <p class="text-sm text-graphite">No students have signed up yet.</p>
+    </div>
+  ` : `
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 anim-fade-up stagger-1">
+    ${students.map(st => {
+      const progress = studentProgress(st.id);
+      const unread = unreadFromStudent(st.id);
+      return `
+      <button data-view-student="${st.id}" class="relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover">
+        ${unread > 0 ? `<span class="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-redline pulse-dot"></span>` : ''}
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">${escapeHtml(st.name.charAt(0).toUpperCase())}</div>
+          <div class="min-w-0">
+            <p class="font-semibold text-ink text-sm truncate">${escapeHtml(st.name)}</p>
+            <p class="font-mono2 text-[10px] text-graphite/70 mt-0.5">ID: ${escapeHtml(st.id)}</p>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-graphite">${progress.checked + progress.submitted + progress.revision}/${progress.total} homework done</span>
+          <span class="font-mono2 text-[10px] text-graphite/60 uppercase">Joined ${formatDate(st.joinedAt)}</span>
+        </div>
+      </button>
+      `;
+    }).join('')}
+  </div>
+  `}
+  `;
+}
+
+// ============================================================
+// STUDENT DETAIL OVERLAY (admin) — profile, progress, chat
+// ============================================================
+function chatThreadHtml(studentId, forRole) {
+  const thread = getThread(studentId);
+  if (thread.length === 0) {
+    return `<div class="flex-1 flex items-center justify-center py-10"><p class="text-xs text-graphite/60 italic">No messages yet. Say hello.</p></div>`;
+  }
+  return thread.map(m => {
+    const mine = m.sender === forRole;
+    return `
+    <div class="flex ${mine ? 'justify-end' : 'justify-start'}">
+      <div class="max-w-[80%]">
+        <div class="${mine ? 'chat-bubble-out bg-ink text-paper' : 'chat-bubble-in bg-paper/70 text-ink border border-ink/10'} rounded-2xl px-4 py-2.5 text-sm leading-snug">${escapeHtml(m.text)}</div>
+        <p class="font-mono2 text-[9px] text-graphite/50 mt-1 ${mine ? 'text-right' : 'text-left'}">${formatDateTime(m.ts)}</p>
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+function mountStudentDetail(studentId) {
+  const existing = document.getElementById('student-detail-root');
+  if (existing) existing.remove();
+  const student = findStudent(studentId);
+  if (!student) { activeStudentDetailId = null; return; }
+
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+  const progress = studentProgress(studentId);
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'student-detail-root';
+  wrapper.innerHTML = `
+    <div id="sd-overlay" class="workspace-overlay fixed inset-0 bg-ink/50 backdrop-blur-sm z-[60]"></div>
+    <div id="sd-panel" class="workspace-panel fixed top-0 right-0 h-screen w-full lg:w-[640px] bg-papercard z-[70] shadow-2xl flex flex-col">
+
+      <div class="flex items-center justify-between px-6 sm:px-8 py-4 border-b border-ink/10 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">${escapeHtml(student.name.charAt(0).toUpperCase())}</div>
+          <div class="min-w-0">
+            <h2 class="font-display font-semibold text-ink text-base truncate">${escapeHtml(student.name)}</h2>
+            <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite">ID: ${escapeHtml(student.id)} · Joined ${formatDate(student.joinedAt)}</p>
+          </div>
+        </div>
+        <button id="close-student-detail" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('x', 'w-5 h-5')}</button>
+      </div>
+
+      <div class="flex items-center gap-1.5 px-6 sm:px-8 pt-4 shrink-0">
+        <button data-sd-tab="progress" class="sd-tab-btn ${studentDetailTab === 'progress' ? 'bg-ink text-paper' : 'bg-ink/5 text-ink hover:bg-ink/10'} btn-press px-4 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5">${ic('trending', 'w-3.5 h-3.5')} Progress</button>
+        <button data-sd-tab="chat" class="sd-tab-btn ${studentDetailTab === 'chat' ? 'bg-ink text-paper' : 'bg-ink/5 text-ink hover:bg-ink/10'} btn-press px-4 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5">${ic('chat', 'w-3.5 h-3.5')} Message${unreadFromStudent(studentId) > 0 ? ` <span class="w-4 h-4 rounded-full bg-redline text-paper text-[9px] flex items-center justify-center">${unreadFromStudent(studentId)}</span>` : ''}</button>
+      </div>
+
+      ${studentDetailTab === 'chat' ? `
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <div id="sd-chat-scroll" class="chat-scroll flex-1 overflow-y-auto px-6 sm:px-8 py-5 space-y-3">
+          ${chatThreadHtml(studentId, 'admin')}
+        </div>
+        <form id="sd-chat-form" class="shrink-0 px-6 sm:px-8 py-4 border-t border-ink/10 flex items-center gap-3">
+          <input id="sd-chat-input" type="text" autocomplete="off" placeholder="Message ${escapeHtml(student.name.split(' ')[0])}..."
+            class="flex-1 px-4 py-3 rounded-full bg-paper/60 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors" />
+          <button type="submit" class="btn-press w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 shadow-md shadow-black/15">${ic('sendHorizontal', 'w-4 h-4')}</button>
+        </form>
+      </div>
+      ` : `
+      <div class="flex-1 overflow-y-auto px-6 sm:px-8 py-5">
+        <div class="grid grid-cols-4 gap-2.5 mb-6">
+          <div class="bg-paper/50 rounded-xl p-3 text-center"><p class="font-display text-xl font-semibold text-ink">${progress.total}</p><p class="font-mono2 text-[9px] uppercase text-graphite mt-0.5">Total</p></div>
+          <div class="bg-redline/6 rounded-xl p-3 text-center"><p class="font-display text-xl font-semibold text-redline">${progress.pending}</p><p class="font-mono2 text-[9px] uppercase text-graphite mt-0.5">Pending</p></div>
+          <div class="bg-ochre/8 rounded-xl p-3 text-center"><p class="font-display text-xl font-semibold text-ochre">${progress.submitted + progress.revision}</p><p class="font-mono2 text-[9px] uppercase text-graphite mt-0.5">Awaiting</p></div>
+          <div class="bg-moss/8 rounded-xl p-3 text-center"><p class="font-display text-xl font-semibold text-moss">${progress.checked}</p><p class="font-mono2 text-[9px] uppercase text-graphite mt-0.5">Checked</p></div>
+        </div>
+        <p class="font-mono2 text-[10px] font-semibold text-graphite uppercase tracking-widest mb-3">Every Assignment</p>
+        <div class="space-y-2.5">
+          ${assignments.map(a => {
+            const sub = getSubmission(a.id, studentId);
+            const status = sub ? sub.status : 'pending';
+            return `
+            <div class="flex items-center justify-between gap-3 bg-paper/40 rounded-xl px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-ink truncate">${escapeHtml(a.title)}</p>
+                <p class="font-mono2 text-[9px] text-graphite/60 mt-0.5 uppercase">${a.type === 'code' ? (a.codeLang || 'html') : 'written'}</p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${statusChip(status)}
+                ${sub ? `<button data-review="${a.id}|${studentId}" class="btn-press font-mono2 text-[10px] uppercase tracking-wide font-semibold text-ink bg-ink/5 hover:bg-ink/10 rounded-full px-3 py-1.5">View</button>` : ''}
+              </div>
+            </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      `}
+    </div>
+  `;
+  document.body.appendChild(wrapper);
+
+  requestAnimationFrame(() => {
+    document.getElementById('sd-overlay').classList.add('open');
+    document.getElementById('sd-panel').classList.add('open');
+    const scroller = document.getElementById('sd-chat-scroll');
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  });
+
+  if (studentDetailTab === 'chat') markThreadRead(studentId, 'admin');
+
+  document.getElementById('close-student-detail').addEventListener('click', closeStudentDetail);
+  document.getElementById('sd-overlay').addEventListener('click', closeStudentDetail);
+
+  wrapper.querySelectorAll('[data-sd-tab]').forEach(btn => {
+    btn.addEventListener('click', () => { studentDetailTab = btn.dataset.sdTab; render(); });
+  });
+
+  wrapper.querySelectorAll('[data-review]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [assignmentId, sid] = btn.dataset.review.split('|');
+      activeReviewKey = { assignmentId, studentId: sid };
+      render();
+    });
+  });
+
+  const chatForm = document.getElementById('sd-chat-form');
+  if (chatForm) {
+    chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('sd-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      sendMessage(studentId, 'admin', text);
+      input.value = '';
+      render();
+    });
+  }
+}
+
+function closeStudentDetail() {
+  const overlay = document.getElementById('sd-overlay');
+  const panel = document.getElementById('sd-panel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel) panel.classList.remove('open');
+  activeStudentDetailId = null;
+  setTimeout(() => { const el = document.getElementById('student-detail-root'); if (el) el.remove(); }, 460);
+}
+
+// ============================================================
+// SUBMISSION REVIEW OVERLAY (admin) — view + approve / send back
+// ============================================================
+function buildPreviewDoc(lang, code) {
+  const safe = code || '';
+  if (lang === 'css') {
+    return '<!DOCTYPE html><html><head><style>' + safe + '</style></head><body style="font-family:sans-serif;padding:20px;margin:0;"><h1>Sample Heading</h1><p>This is a paragraph of sample text so you can see how your styles look.</p><button>Click Me</button><ul><li>List item one</li><li>List item two</li></ul></body></html>';
+  }
+  if (lang === 'js') {
+    return '<!DOCTYPE html><html><body style="font-family:\'IBM Plex Mono\',monospace;padding:16px;font-size:13px;background:#1C1712;color:#F1EBDA;margin:0;min-height:100vh;"><div id="out"></div><scr' + 'ipt>const out=document.getElementById("out");function log(){const d=document.createElement("div");d.style.marginBottom="4px";d.style.borderBottom="1px dashed rgba(241,235,218,0.15)";d.style.paddingBottom="4px";const args=Array.prototype.slice.call(arguments);d.textContent=args.map(function(x){return typeof x==="object"?JSON.stringify(x):String(x);}).join(" ");out.appendChild(d);}console.log=log;try{' + safe + '}catch(e){log("Error: "+e.message);}</scr' + 'ipt></body></html>';
+  }
+  return safe;
+}
+
+function mountSubmissionReview(assignmentId, studentId) {
+  const existing = document.getElementById('review-root');
+  if (existing) existing.remove();
+  const assignment = getAssignments().find(a => a.id === assignmentId);
+  const student = findStudent(studentId);
+  const sub = getSubmission(assignmentId, studentId);
+  if (!assignment || !student || !sub) { activeReviewKey = null; return; }
+
+  const isCode = assignment.type === 'code';
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'review-root';
+  wrapper.innerHTML = `
+    <div id="rv-overlay" class="workspace-overlay fixed inset-0 bg-ink/50 backdrop-blur-sm z-[65]"></div>
+    <div id="rv-panel" class="workspace-panel fixed top-0 right-0 h-screen w-full lg:w-[88%] xl:w-[80%] bg-papercard z-[75] shadow-2xl flex flex-col">
+
+      <div class="flex items-center justify-between px-6 sm:px-8 py-4 border-b border-ink/10 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-ink flex items-center justify-center shrink-0">${ic(isCode ? 'code' : 'fileText', 'w-4 h-4 text-paper')}</div>
+          <div class="min-w-0">
+            <h2 class="font-display font-semibold text-ink text-sm sm:text-base truncate">${escapeHtml(assignment.title)}</h2>
+            <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite">Reviewing ${escapeHtml(student.name)}'s submission</p>
+          </div>
+        </div>
+        <button id="close-review" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('x', 'w-5 h-5')}</button>
+      </div>
+
+      <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div class="w-full md:w-[34%] border-b md:border-b-0 md:border-r border-ink/10 overflow-y-auto px-6 sm:px-8 py-7 bg-kraft/25">
+          <div class="flex items-center gap-2 mb-4">${statusChip(sub.status)} <span class="font-mono2 text-[10px] text-graphite/70">SUBMITTED ${timeAgo(sub.submittedAt).toUpperCase()}</span></div>
+          <h3 class="font-display text-lg font-semibold text-ink mb-2 leading-snug">${escapeHtml(assignment.title)}</h3>
+          <p class="text-sm text-graphite leading-relaxed mb-5 whitespace-pre-wrap">${escapeHtml(assignment.description)}</p>
+
+          ${sub.status === 'revision' && sub.remark ? `
+            <div class="mb-5 rounded-xl border border-redline/25 bg-redline/6 p-4">
+              <p class="font-mono2 text-[10px] font-semibold text-redline uppercase tracking-widest mb-1.5">Your Last Remark</p>
+              <p class="text-sm text-redline/90 leading-relaxed">${escapeHtml(sub.remark)}</p>
+            </div>
+          ` : ''}
+
+          <div class="pt-5 border-t border-dashed border-ink/15">
+            <label class="font-mono2 text-[10px] font-semibold text-graphite uppercase tracking-widest mb-2 block">Remark ${isCode ? '/ Feedback' : ''} <span class="normal-case font-sans text-graphite/70">(shown to student if sent back)</span></label>
+            <textarea id="rv-remark" rows="4" placeholder="e.g. Great start, but check your closing tags on line 3..."
+              class="w-full px-4 py-3 rounded-xl bg-papercard border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors resize-none"></textarea>
+            <div class="flex flex-col gap-2.5 mt-4">
+              <button id="rv-approve" class="btn-press w-full py-3 rounded-full font-semibold text-sm text-paper bg-moss hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md shadow-black/10">
+                ${ic('checkCircle', 'w-4 h-4')} Approve — Checked ✓
+              </button>
+              <button id="rv-revision" class="btn-press w-full py-3 rounded-full font-semibold text-sm text-redline bg-redline/8 hover:bg-redline/14 transition-colors flex items-center justify-center gap-2 border border-redline/20">
+                ${ic('alertTriangle', 'w-4 h-4')} Send Back for Revision
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden bg-papercard">
+          ${isCode ? `
+            <div class="flex items-center gap-1.5 px-4 sm:px-6 py-3 border-b border-ink/10 shrink-0">
+              <span class="font-mono2 text-[10px] uppercase tracking-widest text-graphite mr-2">${(assignment.codeLang || 'html')} submission</span>
+            </div>
+            <div class="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2">
+              <div class="overflow-y-auto border-b md:border-b-0 md:border-r border-ink/10">
+                <pre class="code-editor text-xs p-5 whitespace-pre-wrap break-words min-h-full">${escapeHtml(sub.content)}</pre>
+              </div>
+              <div class="overflow-hidden bg-white">
+                <iframe id="rv-preview-frame" class="w-full h-full border-0" sandbox="allow-scripts"></iframe>
+              </div>
+            </div>
+          ` : `
+            <div class="flex-1 overflow-y-auto relative px-4 sm:px-8 py-6">
+              <div class="notebook-margin"></div>
+              <div class="notebook-paper font-hand w-full min-h-full text-[22px] text-ink/85 pl-16 pr-4 whitespace-pre-wrap">${escapeHtml(sub.content)}</div>
+            </div>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrapper);
+
+  requestAnimationFrame(() => {
+    document.getElementById('rv-overlay').classList.add('open');
+    document.getElementById('rv-panel').classList.add('open');
+    if (isCode) {
+      const frame = document.getElementById('rv-preview-frame');
+      if (frame) frame.srcdoc = buildPreviewDoc(assignment.codeLang, sub.content);
+    }
+  });
+
+  document.getElementById('close-review').addEventListener('click', closeReview);
+  document.getElementById('rv-overlay').addEventListener('click', closeReview);
+
+  document.getElementById('rv-approve').addEventListener('click', () => {
+    upsertSubmission(assignmentId, studentId, { status: 'checked', remark: document.getElementById('rv-remark').value.trim() || null, checkedAt: Date.now() });
+    showToast('Marked as checked!');
+    closeReview();
+    setTimeout(() => render(), 380);
+  });
+  document.getElementById('rv-revision').addEventListener('click', () => {
+    const remark = document.getElementById('rv-remark').value.trim();
+    if (!remark) {
+      const ta = document.getElementById('rv-remark');
+      ta.classList.add('ring-2', 'ring-redline/40');
+      ta.placeholder = 'Add a remark so the student knows what to fix...';
+      setTimeout(() => ta.classList.remove('ring-2', 'ring-redline/40'), 900);
+      return;
+    }
+    upsertSubmission(assignmentId, studentId, { status: 'revision', remark, checkedAt: Date.now() });
+    showToast('Sent back for revision.');
+    closeReview();
+    setTimeout(() => render(), 380);
+  });
+}
+
+function closeReview() {
+  const overlay = document.getElementById('rv-overlay');
+  const panel = document.getElementById('rv-panel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel) panel.classList.remove('open');
+  activeReviewKey = null;
+  setTimeout(() => { const el = document.getElementById('review-root'); if (el) el.remove(); }, 460);
+}
+
+// ============================================================
+// LEARNER — shell + tab router
+// ============================================================
+function renderLearner() {
+  const session = getSession();
+  const studentId = session?.id;
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+  const seenIds = getSeenIds(studentId);
+  const newOnes = assignments.filter(a => !seenIds.includes(a.id));
+  const revisionOnes = assignments.filter(a => submissionStatus(a.id, studentId) === 'revision');
+  const showBanner = (newOnes.length > 0 || revisionOnes.length > 0) && !bannerDismissed;
+
+  return `
+  <div class="min-h-screen bg-paper">
+    ${renderMobileHeader('learner', session?.name, newOnes.length > 0 || revisionOnes.length > 0 || unreadFromAdmin(studentId) > 0)}
+    <div class="flex">
+      ${renderSidebar('learner', learnerNav, session?.name, session)}
+      <main class="flex-1 min-w-0">
+        <div class="max-w-5xl mx-auto px-5 sm:px-8 py-6 sm:py-10">
+
+          ${showBanner ? `
+            <div id="notify-banner" class="anim-fade-up mb-6 relative overflow-hidden rounded-2xl border border-redline/25 bg-redline/6 p-4 sm:p-5 flex items-center gap-4">
+              <div class="w-11 h-11 rounded-full border-2 border-redline flex items-center justify-center shrink-0 -rotate-3">
+                <span class="bell-ring inline-block text-redline">${ic('bell', 'w-5 h-5')}</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-redline">
+                  ${newOnes.length > 0 && revisionOnes.length > 0 ? `${newOnes.length} new · ${revisionOnes.length} need fixes` : newOnes.length > 0 ? (newOnes.length === 1 ? 'New homework posted' : newOnes.length + ' new homework posted') : (revisionOnes.length === 1 ? '1 homework needs a fix' : revisionOnes.length + ' homework need fixes')}
+                </p>
+                <p class="text-xs text-redline/75 truncate mt-0.5">${escapeHtml(newOnes.concat(revisionOnes).map(n => n.title).join(' · '))}</p>
+              </div>
+              <button id="dismiss-banner" class="shrink-0 w-8 h-8 rounded-full hover:bg-redline/10 flex items-center justify-center text-redline">
+                ${ic('x', 'w-4 h-4')}
+              </button>
+            </div>
+          ` : ''}
+
+          ${learnerNav === 'homework' ? renderLearnerHomework(session)
+            : learnerNav === 'notification' ? renderLearnerNotification(session)
+            : renderLearnerDashboard(session)}
+
+        </div>
+      </main>
+    </div>
+  </div>
+  `;
+}
+
+function learnerHomeworkCard(a, studentId, opts) {
+  opts = opts || {};
+  const sub = getSubmission(a.id, studentId);
+  const status = sub ? sub.status : 'pending';
+  const btnLabel = status === 'pending' ? 'Do Homework' : status === 'revision' ? 'Fix & Resubmit' : 'View & Edit';
+  return `
+    <div class="relative bg-papercard rounded-[1.5rem] border border-dashed border-ink/20 p-5 pt-7 sm:p-6 sm:pt-8 card-hover flex flex-col">
+      ${notch()}
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        ${statusChip(status)}
+        <span class="font-mono2 text-[10px] text-graphite/70 font-medium">${formatDate(a.createdAt).toUpperCase()}</span>
+      </div>
+      <h3 class="font-semibold text-ink text-[15px] mb-1.5 leading-snug">${escapeHtml(a.title)}</h3>
+      ${a.type === 'code' ? `<p class="mb-2"><span class="font-mono2 text-[10px] uppercase tracking-wide text-ochre bg-ochre/8 border border-ochre/20 rounded-full px-2 py-0.5">${a.codeLang}</span></p>` : ''}
+      <p class="text-xs text-graphite line-clamp-2 mb-5 flex-1">${escapeHtml(a.description)}</p>
+      ${status === 'revision' && sub && sub.remark ? `<p class="text-xs text-redline bg-redline/6 border border-redline/20 rounded-xl px-3 py-2 mb-4 leading-relaxed"><strong class="font-semibold">Remark:</strong> ${escapeHtml(sub.remark)}</p>` : ''}
+      <button data-open-workspace="${a.id}" class="btn-press w-full py-3 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-md shadow-black/15">
+        ${ic(a.type === 'code' ? 'code' : 'pencil', 'w-4 h-4')} ${btnLabel}
+      </button>
+    </div>
+  `;
+}
+
+// ---------- DASHBOARD ----------
+function renderLearnerDashboard(session) {
+  const studentId = session?.id;
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+  const revision = assignments.filter(a => submissionStatus(a.id, studentId) === 'revision');
+  const pending = assignments.filter(a => submissionStatus(a.id, studentId) === 'pending');
+  const done = assignments.filter(a => ['submitted', 'checked'].includes(submissionStatus(a.id, studentId)));
+
+  return `
+  <div class="flex items-center justify-between mb-8 anim-fade-up stagger-1">
+    <div>
+      <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink tracking-tight">Hey, ${escapeHtml((session?.name || 'there').split(' ')[0])}</h1>
+      <p class="text-graphite text-sm mt-1.5">${pending.length === 0 && revision.length === 0 ? "You're all caught up — nothing due right now." : `You have ${pending.length + revision.length} homework to take care of.`}</p>
+    </div>
+    <div class="hidden sm:flex items-center gap-2 font-mono2 text-[10px] tracking-widest uppercase text-graphite bg-papercard border border-ink/10 px-3.5 py-2 rounded-full">
+      <span class="w-1.5 h-1.5 rounded-full bg-ink"></span> Stored on device
+    </div>
+  </div>
+
+  ${revision.length > 0 ? `
+  <div class="mb-9 anim-fade-up stagger-2">
+    <h2 class="font-display font-semibold text-lg text-redline mb-4 flex items-center gap-2">${ic('alertTriangle', 'w-4 h-4')} Needs Your Attention</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      ${revision.map(a => learnerHomeworkCard(a, studentId)).join('')}
+    </div>
+  </div>
+  ` : ''}
+
+  <div class="mb-9 anim-fade-up stagger-2">
+    <h2 class="font-display font-semibold text-lg text-ink mb-4">Pending</h2>
+    ${pending.length === 0 ? `
+      <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center">
+        <div class="text-ink/25 mx-auto mb-2 w-6 h-6">${ic('sparkle', 'w-6 h-6 mx-auto')}</div>
+        <p class="text-sm text-graphite">No pending work. Enjoy the break.</p>
+      </div>
+    ` : `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      ${pending.map(a => learnerHomeworkCard(a, studentId)).join('')}
+    </div>
+    `}
+  </div>
+
+  ${done.length > 0 ? `
+  <div class="anim-fade-up stagger-3">
+    <h2 class="font-display font-semibold text-lg text-ink mb-4">Done</h2>
+    <div class="space-y-3">
+      ${done.map(a => {
+        const sub = getSubmission(a.id, studentId);
+        return `
+        <div class="bg-papercard rounded-2xl border border-ink/8 p-5 flex items-center gap-4">
+          <div class="w-9 h-9 rounded-full bg-ink/5 flex items-center justify-center shrink-0">${ic('checkCircle', 'w-4.5 h-4.5 text-ink/60')}</div>
+          <div class="min-w-0 flex-1">
+            <h3 class="font-semibold text-ink text-sm truncate">${escapeHtml(a.title)}</h3>
+            <p class="font-mono2 text-[10px] text-graphite/70 mt-1 tracking-wide">TURNED IN ${timeAgo(sub.submittedAt).toUpperCase()}</p>
+          </div>
+          ${statusChip(sub.status)}
+        </div>
+        `;
+      }).join('')}
+    </div>
+  </div>
+  ` : ''}
+  `;
+}
+
+// ---------- HOMEWORK (all) ----------
+function renderLearnerHomework(session) {
+  const studentId = session?.id;
+  const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
+
+  return `
+  <div class="mb-8 anim-fade-up stagger-1">
+    <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink tracking-tight">Homework</h1>
+    <p class="text-graphite text-sm mt-1.5">Everything your teacher has ever assigned, in one place.</p>
+  </div>
+
+  ${assignments.length === 0 ? `
+    <div class="bg-papercard rounded-2xl border border-dashed border-ink/20 p-10 text-center anim-fade-up">
+      <p class="text-sm text-graphite">Nothing's been assigned yet — check back soon.</p>
+    </div>
+  ` : `
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 anim-fade-up stagger-2">
+    ${assignments.map(a => learnerHomeworkCard(a, studentId)).join('')}
+  </div>
+  `}
+  `;
+}
+
+// ---------- NOTIFICATION (chat with admin) ----------
+function renderLearnerNotification(session) {
+  const studentId = session?.id;
+  return `
+  <div class="mb-6 anim-fade-up stagger-1">
+    <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink tracking-tight">Notification</h1>
+    <p class="text-graphite text-sm mt-1.5">Message ${escapeHtml(ADMIN_NAME)} directly about your homework.</p>
+  </div>
+  <div class="bg-papercard rounded-[1.75rem] border border-ink/8 shadow-sm flex flex-col h-[65vh] anim-fade-up stagger-2 overflow-hidden">
+    <div id="ln-chat-scroll" class="chat-scroll flex-1 overflow-y-auto px-5 sm:px-7 py-6 space-y-3">
+      ${chatThreadHtml(studentId, 'learner')}
+    </div>
+    <form id="ln-chat-form" class="shrink-0 px-5 sm:px-7 py-4 border-t border-ink/10 flex items-center gap-3">
+      <input id="ln-chat-input" type="text" autocomplete="off" placeholder="Type a message..."
+        class="flex-1 px-4 py-3 rounded-full bg-paper/60 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors" />
+      <button type="submit" class="btn-press w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 shadow-md shadow-black/15">${ic('sendHorizontal', 'w-4 h-4')}</button>
+    </form>
+  </div>
+  `;
+}
+
+// ============================================================
+// WORKSPACE (SPLIT-SCREEN OVERLAY) — student doing homework
+// ============================================================
+function mountWorkspace(id) {
+  const existing = document.getElementById('workspace-root');
+  if (existing) existing.remove();
+
+  const assignment = getAssignments().find(a => a.id === id);
+  if (!assignment) { activeWorkspaceId = null; return; }
+  const session = getSession();
+  const studentId = session?.id;
+  const sub = getSubmission(id, studentId);
+  const isCode = assignment.type === 'code';
+  const prefill = sub ? sub.content : (isCode ? (assignment.starter || '') : '');
+  editorPreviewMode = 'code';
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'workspace-root';
+  wrapper.innerHTML = `
+    <div id="workspace-overlay" class="workspace-overlay fixed inset-0 bg-ink/50 backdrop-blur-sm z-[60]"></div>
+    <div id="workspace-panel" class="workspace-panel fixed top-0 right-0 h-screen w-full lg:w-[88%] xl:w-[80%] bg-papercard z-[70] shadow-2xl flex flex-col">
+
+      <div class="flex items-center justify-between px-6 sm:px-8 py-4 border-b border-ink/10 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-ink flex items-center justify-center shrink-0">
+            ${ic(isCode ? 'code' : 'pencil', 'w-4 h-4 text-paper')}
+          </div>
+          <div class="min-w-0">
+            <h2 class="font-display font-semibold text-ink text-sm sm:text-base truncate">${escapeHtml(assignment.title)}</h2>
+            <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite">${isCode ? (assignment.codeLang || 'html') + ' workspace' : 'Assignment workspace'}</p>
+          </div>
+        </div>
+        ${isCode ? `
+        <div class="segmented hidden sm:flex items-center gap-1 bg-ink/5 rounded-full p-1 mr-2">
+          <button type="button" data-editor-view="code" class="editor-view-btn active px-3 py-1.5 rounded-full text-xs font-semibold transition-colors">Code</button>
+          <button type="button" data-editor-view="preview" class="editor-view-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors">Preview</button>
+        </div>
+        ` : ''}
+        <button id="close-workspace" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">
+          ${ic('x', 'w-5 h-5')}
+        </button>
+      </div>
+
+      <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div class="w-full md:w-[36%] border-b md:border-b-0 md:border-r border-ink/10 overflow-y-auto px-6 sm:px-8 py-7 bg-kraft/25">
+          <span class="stamp stamp-ink mb-4">Teacher's Prompt</span>
+          <h3 class="font-display text-xl font-semibold text-ink mb-3 mt-4 leading-snug">${escapeHtml(assignment.title)}</h3>
+          <p class="text-sm text-graphite leading-relaxed mb-6 whitespace-pre-wrap">${escapeHtml(assignment.description)}</p>
+
+          ${sub && sub.status === 'revision' && sub.remark ? `
+            <div class="mb-6 rounded-xl border border-redline/25 bg-redline/6 p-4">
+              <p class="font-mono2 text-[10px] font-semibold text-redline uppercase tracking-widest mb-1.5 flex items-center gap-1.5">${ic('alertTriangle', 'w-3.5 h-3.5')} ${escapeHtml(ADMIN_NAME)}'s Remark</p>
+              <p class="text-sm text-redline/90 leading-relaxed">${escapeHtml(sub.remark)}</p>
+            </div>
+          ` : ''}
+
+          ${assignment.objectives && assignment.objectives.length ? `
+            <p class="font-mono2 text-[10px] font-semibold text-graphite mb-2.5 uppercase tracking-widest">Target Objectives</p>
+            <ul class="space-y-2.5">
+              ${assignment.objectives.map(o => `
+                <li class="flex items-start gap-2.5 text-sm text-ink/80">
+                  <span class="w-5 h-5 rounded-full border-2 border-ink/25 text-ink/60 flex items-center justify-center shrink-0 mt-0.5">
+                    ${ic('check', 'w-3 h-3')}
+                  </span>
+                  <span>${escapeHtml(o)}</span>
+                </li>
+              `).join('')}
+            </ul>
+          ` : ''}
+
+          <div class="mt-8 pt-6 border-t border-dashed border-ink/15">
+            <p class="font-mono2 text-[10px] text-graphite tracking-wide">PUBLISHED ${timeAgo(assignment.createdAt).toUpperCase()}</p>
+          </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden bg-papercard">
+          ${isCode ? `
+            <div id="editor-pane-code" class="flex-1 overflow-y-auto p-4 sm:p-6">
+              <textarea id="code-input" spellcheck="false"
+                class="code-editor w-full h-full min-h-[300px] outline-none resize-none text-sm p-5 rounded-2xl"
+                placeholder="Write your ${assignment.codeLang || 'html'} here...">${escapeHtml(prefill)}</textarea>
+            </div>
+            <div id="editor-pane-preview" class="hidden flex-1 overflow-hidden bg-white">
+              <iframe id="preview-frame" class="w-full h-full border-0" sandbox="allow-scripts"></iframe>
+            </div>
+          ` : `
+            <div class="flex-1 overflow-y-auto relative px-4 sm:px-8 py-6">
+              <div class="notebook-margin"></div>
+              <textarea id="notebook-input" spellcheck="false"
+                class="notebook-paper font-hand w-full min-h-full outline-none resize-none text-[22px] text-ink/85 pl-16 pr-4"
+                placeholder="Start writing here...">${escapeHtml(prefill)}</textarea>
+            </div>
+          `}
+          <div class="shrink-0 px-6 sm:px-8 py-4 border-t border-ink/10 flex items-center justify-between gap-4 bg-papercard">
+            <p class="text-xs text-graphite hidden sm:block">${isCode ? 'Tab inserts spaces · preview updates as you type' : 'Autosaves locally as you type'}</p>
+            <button id="submit-homework" class="btn-press px-6 py-3 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 ml-auto shadow-lg shadow-black/15">
+              ${ic('sendHorizontal', 'w-4 h-4')} Turn In Homework
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrapper);
+
+  requestAnimationFrame(() => {
+    document.getElementById('workspace-overlay').classList.add('open');
+    document.getElementById('workspace-panel').classList.add('open');
+  });
+
+  document.getElementById('close-workspace').addEventListener('click', closeWorkspace);
+  document.getElementById('workspace-overlay').addEventListener('click', closeWorkspace);
+
+  const inputEl = isCode ? document.getElementById('code-input') : document.getElementById('notebook-input');
+
+  if (isCode) {
+    const frame = document.getElementById('preview-frame');
+    let debounceTimer = null;
+    const refreshPreview = () => { frame.srcdoc = buildPreviewDoc(assignment.codeLang, inputEl.value); };
+    refreshPreview();
+    inputEl.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(refreshPreview, 400);
+    });
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+        inputEl.value = inputEl.value.slice(0, start) + '  ' + inputEl.value.slice(end);
+        inputEl.selectionStart = inputEl.selectionEnd = start + 2;
+      }
+    });
+
+    wrapper.querySelectorAll('[data-editor-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editorPreviewMode = btn.dataset.editorView;
+        wrapper.querySelectorAll('[data-editor-view]').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('editor-pane-code').classList.toggle('hidden', editorPreviewMode !== 'code');
+        document.getElementById('editor-pane-preview').classList.toggle('hidden', editorPreviewMode !== 'preview');
+        if (editorPreviewMode === 'preview') refreshPreview();
+      });
+    });
+  }
+
+  document.getElementById('submit-homework').addEventListener('click', () => {
+    const text = inputEl.value.trim();
+    if (!text) {
+      inputEl.classList.add('ring-2', 'ring-redline/40', 'rounded-2xl');
+      inputEl.placeholder = "Write something before turning it in...";
+      setTimeout(() => inputEl.classList.remove('ring-2', 'ring-redline/40', 'rounded-2xl'), 900);
+      return;
+    }
+    upsertSubmission(id, studentId, { content: inputEl.value, status: 'submitted', submittedAt: Date.now(), remark: null });
+    showToast('Homework turned in!');
+    closeWorkspace();
+    setTimeout(() => render(), 380);
+  });
+}
+
+function closeWorkspace() {
+  const overlay = document.getElementById('workspace-overlay');
+  const panel = document.getElementById('workspace-panel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel) panel.classList.remove('open');
+  activeWorkspaceId = null;
+  setTimeout(() => { const el = document.getElementById('workspace-root'); if (el) el.remove(); }, 460);
+}
+
+// ============================================================
+// EVENT BINDING
+// ============================================================
+function bindEvents() {
+  const toggleBtn = document.getElementById('toggle-password');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const pwInput = document.getElementById('login-password');
+      const isPw = pwInput.type === 'password';
+      pwInput.type = isPw ? 'text' : 'password';
+      toggleBtn.innerHTML = isPw ? ic('eyeOff', 'w-4 h-4') : ic('eye', 'w-4 h-4');
+    });
+  }
+
+  const showSignupBtn = document.getElementById('show-signup');
+  if (showSignupBtn) showSignupBtn.addEventListener('click', () => { authMode = 'signup'; render(); });
+  const backToLoginBtn = document.getElementById('back-to-login');
+  if (backToLoginBtn) backToLoginBtn.addEventListener('click', () => { authMode = 'login'; render(); });
+
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const uidRaw = document.getElementById('login-uid').value.trim();
+      const pw = document.getElementById('login-password').value;
+      const errorEl = document.getElementById('login-error');
+      const showError = (msg) => {
+        errorEl.querySelector('span').textContent = msg;
+        errorEl.classList.remove('hidden');
+        errorEl.classList.add('flex');
+      };
+
+      if (!uidRaw) { showError('Enter an ID to continue.'); return; }
+
+      if (uidRaw.toLowerCase() === ADMIN_ID) {
+        if (pw !== ADMIN_PW) { showError('Incorrect password for admin.'); return; }
+        errorEl.classList.add('hidden');
+        setSession({ role: 'admin', id: ADMIN_ID, name: ADMIN_NAME });
+        adminNav = 'dashboard';
+        navigate('admin');
+        return;
+      }
+
+      const student = findStudent(uidRaw);
+      if (!student || student.password !== pw) { showError("No matching account. New here? Sign up below."); return; }
+      errorEl.classList.add('hidden');
+      setSession({ role: 'learner', id: student.id, name: student.name });
+      bannerDismissed = false;
+      learnerNav = 'dashboard';
+      navigate('learner');
+      setTimeout(() => markAllSeen(student.id), 3500);
+    });
+  }
+
+  const signupForm = document.getElementById('signup-form');
+  if (signupForm) {
+    signupForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('signup-name').value.trim();
+      const uidRaw = document.getElementById('signup-uid').value.trim();
+      const pw = document.getElementById('signup-password').value;
+      const pw2 = document.getElementById('signup-password2').value;
+      const errorEl = document.getElementById('signup-error');
+      const showError = (msg) => {
+        errorEl.querySelector('span').textContent = msg;
+        errorEl.classList.remove('hidden');
+        errorEl.classList.add('flex');
+      };
+
+      if (!name || !uidRaw || !pw || !pw2) { showError("Fill in every field to continue."); return; }
+      const uid = uidRaw.toLowerCase().replace(/\s+/g, '');
+      if (uid === ADMIN_ID) { showError("That ID is reserved. Pick another."); return; }
+      if (findStudent(uid)) { showError("That ID is already taken. Pick another."); return; }
+      if (pw.length < 4) { showError("Password should be at least 4 characters."); return; }
+      if (pw !== pw2) { showError("Passwords don't match."); return; }
+      errorEl.classList.add('hidden');
+
+      const students = getStudents();
+      students.push({ id: uid, password: pw, name, joinedAt: Date.now() });
+      saveStudents(students);
+      setSession({ role: 'learner', id: uid, name });
+      bannerDismissed = false;
+      authMode = 'login';
+      learnerNav = 'dashboard';
+      navigate('learner');
+      showToast('Welcome, ' + name.split(' ')[0] + '!');
+      setTimeout(() => markAllSeen(uid), 3500);
+    });
+  }
+
+  const hamburgerBtn = document.getElementById('hamburger-btn');
+  if (hamburgerBtn) hamburgerBtn.addEventListener('click', openSidebarDrawer);
+  const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+  if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebarDrawer);
+  const sidebarBackdrop = document.getElementById('mobile-sidebar-backdrop');
+  if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeSidebarDrawer);
+
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) logoutBtn.addEventListener('click', () => {
+    clearSession();
+    adminNav = 'dashboard'; learnerNav = 'dashboard'; authMode = 'login';
+    activeStudentDetailId = null; activeReviewKey = null; activeWorkspaceId = null;
+    navigate('login');
+  });
+
+  document.querySelectorAll('[data-nav]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.nav;
+      const session = getSession();
+      const applyNav = () => {
+        if (session?.role === 'admin') adminNav = target; else learnerNav = target;
+        render();
+      };
+      if (window.innerWidth < 768) { closeSidebarDrawer(); setTimeout(applyNav, 300); }
+      else { applyNav(); }
+    });
+  });
+
+  // Create-homework format / language segmented controls
+  document.querySelectorAll('.format-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const format = btn.dataset.format;
+      document.getElementById('hw-format').value = format;
+      document.getElementById('hw-code-lang-wrap').classList.toggle('hidden', format !== 'code');
+      document.getElementById('hw-starter-wrap').classList.toggle('hidden', format !== 'code');
+    });
+  });
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.getElementById('hw-lang').value = btn.dataset.lang;
+    });
+  });
+
+  const createForm = document.getElementById('create-homework-form');
+  if (createForm) {
+    createForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = document.getElementById('hw-title').value.trim();
+      const description = document.getElementById('hw-description').value.trim();
+      const objectivesRaw = document.getElementById('hw-objectives').value.trim();
+      const objectives = objectivesRaw ? objectivesRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
+      const format = document.getElementById('hw-format').value;
+      if (!title || !description) return;
+
+      const newAssignment = { id: 'hw_' + Date.now(), title, description, objectives, type: format, createdAt: Date.now() };
+      if (format === 'code') {
+        newAssignment.codeLang = document.getElementById('hw-lang').value;
+        newAssignment.starter = document.getElementById('hw-starter').value;
+      }
+
+      const list = getAssignments();
+      list.push(newAssignment);
+      saveAssignments(list);
+      showToast('Homework assigned to class!');
+      createForm.reset();
+      document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b.dataset.format === 'written'));
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === 'html'));
+      document.getElementById('hw-format').value = 'written';
+      document.getElementById('hw-code-lang-wrap')?.classList.add('hidden');
+      document.getElementById('hw-starter-wrap')?.classList.add('hidden');
+      render();
+    });
+  }
+
+  document.querySelectorAll('[data-open-workspace]').forEach(btn => {
+    btn.addEventListener('click', () => { activeWorkspaceId = btn.dataset.openWorkspace; mountWorkspace(activeWorkspaceId); });
+  });
+
+  document.querySelectorAll('[data-toggle-task]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const body = document.getElementById('task-body-' + btn.dataset.toggleTask);
+      const chevron = btn.querySelector('.task-chevron');
+      if (!body) return;
+      const isOpen = !body.classList.contains('hidden');
+      body.classList.toggle('hidden');
+      if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+    });
+  });
+
+  document.querySelectorAll('[data-view-student]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeStudentDetailId = btn.dataset.viewStudent;
+      studentDetailTab = 'progress';
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-review]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [assignmentId, studentId] = btn.dataset.review.split('|');
+      activeReviewKey = { assignmentId, studentId };
+      render();
+    });
+  });
+
+  const dismissBtn = document.getElementById('dismiss-banner');
+  if (dismissBtn) dismissBtn.addEventListener('click', () => {
+    bannerDismissed = true;
+    const session = getSession();
+    if (session?.id) markAllSeen(session.id);
+    render();
+  });
+
+  const lnChatForm = document.getElementById('ln-chat-form');
+  if (lnChatForm) {
+    lnChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('ln-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      const session = getSession();
+      sendMessage(session.id, 'learner', text);
+      input.value = '';
+      render();
+    });
+  }
+  if (learnerNav === 'notification') {
+    const session = getSession();
+    if (session?.id) markThreadRead(session.id, 'learner');
+    const scroller = document.getElementById('ln-chat-scroll');
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+(function init() {
+  getAssignments();
+  const session = getSession();
+  currentRoute = session ? (session.role === 'admin' ? 'admin' : 'learner') : 'login';
+  render();
+})();
+</script>
+</body>
+</html>
