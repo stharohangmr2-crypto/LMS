@@ -31,6 +31,11 @@
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<!-- Firebase: shared cloud storage so homework/submissions/messages sync across every device.
+     See CLOUD-SETUP.md for the 5-minute setup. If firebaseConfig below is left as placeholders,
+     Nimbus silently falls back to this-device-only storage (its original behavior). -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -207,9 +212,9 @@
      elements/ids, its own (simpler, fixed) token palette per spec, so it never
      shares state or risks the tuned student editor. Wiring lives in
      wireHwCodeEditor(). */
-  #hw-workspace-shell { background: #1C1712; }
-  #hw-workspace-shell .code-gutter { min-width: 2.5rem; }
-  #hw-workspace-shell .hw-indent-guides {
+  #hw-workspace-shell, #studio-shell { background: #1C1712; }
+  #hw-workspace-shell .code-gutter, #studio-shell .code-gutter { min-width: 2.5rem; }
+  #hw-workspace-shell .hw-indent-guides, #studio-shell .hw-indent-guides {
     position: absolute; inset: 0; pointer-events: none;
     background-repeat: repeat; background-position: 1.25rem 0;
     background-image: repeating-linear-gradient(to right,
@@ -233,9 +238,56 @@
   #hw-workspace-shell .token.operator, #hw-workspace-shell .token.url,
   #hw-workspace-shell .token.regex, #hw-workspace-shell .token.variable { color: rgba(241,235,218,0.7); }
 
-  /* ---- Code Studio — full-screen iframe embed (code-studio.html) ---- */
-  #studio-fullscreen { position: fixed; inset: 0; height: 100vh; height: 100dvh; z-index: 200; background: #0e1014; display: flex; flex-direction: column; }
-  #code-studio-frame { flex: 1; width: 100%; height: 100%; border: 0; display: block; }
+  /* ---- HTML Studio token palette — minimal on purpose: only strings, numbers
+     and punctuation (; : < > etc.) get color, everything else (tags, attr
+     names, keywords, comments...) stays the plain editor text color, like
+     the Acode-style clean view ---- */
+  #studio-shell .token { color: inherit; font-style: normal; }
+  #studio-shell .token.punctuation, #studio-shell .token.attr-equals { color: #7EC9E8; } /* < > / ; { } ( ) = -> light blue */
+  #studio-shell .token.number, #studio-shell .token.boolean { color: #D9487E; } /* numbers -> dark pink */
+  #studio-shell .token.string, #studio-shell .token.char,
+  #studio-shell .token.attr-value { color: #4A9A62; } /* strings / attr values -> dark green */
+  #studio-shell .token.attr-value .token.punctuation { color: #4A9A62; } /* quotes stay green, incl. the marks themselves */
+  #studio-shell .token.attr-value .token.attr-equals { color: #7EC9E8; } /* but the "=" itself stays light blue */
+
+  /* ---- HTML Studio — standalone full-page editor, own header/toolbar chrome ---- */
+  #studio-shell { display: flex; flex-direction: column; }
+  #studio-console-panel.hidden-menu { display: none; }
+  #studio-console-panel { max-height: 40vh; }
+  .studio-console-row { border-bottom: 1px dashed rgba(241,235,218,0.1); padding: 5px 0; word-break: break-word; }
+  .studio-console-row.is-error { color: #E8899E; }
+  .studio-console-row.is-warn { color: #D9A441; }
+
+  /* ---- Studio full-screen mode + multi-file tabs + sidebar drawer ---- */
+  #studio-fullscreen { position: fixed; inset: 0; height: 100vh; height: 100dvh; z-index: 200; background: #1C1712; display: flex; flex-direction: column; }
+  #studio-tabbar { background: #211A13; border-bottom: 1px solid rgba(241,235,218,0.08); }
+  #studio-tabbar::-webkit-scrollbar { height: 0; }
+  .studio-tab { transition: background 0.15s var(--ease), border-color 0.15s var(--ease); border-top: 2px solid transparent; }
+  .studio-tab.is-active { background: #1C1712; border-top-color: #D9A441; }
+  .studio-tab .studio-tab-close { opacity: 0.55; }
+  .studio-tab .studio-tab-close:hover { opacity: 1; }
+
+  .studio-sidebar-overlay { position: fixed; inset: 0; z-index: 205; background: rgba(0,0,0,0.45); opacity: 0; pointer-events: none; transition: opacity 0.3s var(--ease); }
+  .studio-sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+  .studio-sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 210; width: 84%; max-width: 300px; background: #1C1712; border-right: 1px solid rgba(241,235,218,0.08); transform: translateX(-100%); transition: transform 0.32s var(--ease); display: flex; flex-direction: column; }
+  .studio-sidebar.open { transform: translateX(0); }
+  .studio-file-row { transition: background 0.15s var(--ease); }
+  .studio-file-row.is-active { background: rgba(217,164,65,0.14); }
+  .studio-file-row:active { background: rgba(241,235,218,0.08); }
+
+  .studio-menu-overlay { position: fixed; inset: 0; z-index: 214; background: transparent; }
+  .studio-menu-overlay.hidden-menu { display: none; }
+  #studio-more-menu-full { position: fixed; top: 52px; right: 8px; z-index: 215; width: 232px; max-height: calc(100vh - 72px); overflow-y: auto; background: #241D16; border: 1px solid rgba(241,235,218,0.1); border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,0.45); padding: 6px; opacity: 0; transform: scale(0.95) translateY(-6px); transform-origin: top right; transition: opacity 0.15s var(--ease), transform 0.15s var(--ease); pointer-events: none; }
+  #studio-more-menu-full.open { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+  .studio-menu-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 9px; color: #F1EBDA; font-size: 13.5px; font-weight: 500; transition: background 0.12s var(--ease); }
+  .studio-menu-item:hover, .studio-menu-item:active { background: rgba(241,235,218,0.08); }
+  .studio-menu-divider { height: 1px; background: rgba(241,235,218,0.1); margin: 5px 4px; }
+  .studio-menu-item .k-hint { opacity: 0.4; }
+
+  #studio-fs-editor-area { position: relative; flex: 1; min-height: 0; }
+
+  /* JS token colors, mirroring the tuned palette above */
+  #studio-shell .token.template-string, #studio-shell .token.string-property { color: #4A9A62; }
 
 </style>
 </head>
@@ -350,6 +402,103 @@ const ADMIN_ID = 'rohan';
 const ADMIN_PW = 'MJRR7800MI';
 const ADMIN_NAME = 'Rohan';
 
+// ============================================================
+// CLOUD SYNC (Firebase Firestore) — turns local-only storage into a
+// shared classroom store. Fill in firebaseConfig (see CLOUD-SETUP.md).
+// If left as placeholders, Nimbus works exactly as before: this device only.
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBityEDCgL-xtnfwA5sKALaDk29j-rBe1g",
+  authDomain: "lms-f25ec.firebaseapp.com",
+  projectId: "lms-f25ec",
+  storageBucket: "lms-f25ec.firebasestorage.app",
+  messagingSenderId: "716535124320",
+  appId: "1:716535124320:web:90a257c44b3b4a9de78e05"
+};
+const CLOUD_ENABLED = firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY";
+let cloudDb = null;
+let cloudReady = false;
+let assignmentsSeededThisLoad = false;
+const cloudCache = {};
+
+if (CLOUD_ENABLED && typeof firebase !== 'undefined') {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    cloudDb = firebase.firestore();
+    try { cloudDb.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) {}
+  } catch (e) {
+    console.warn('Nimbus: Firebase failed to initialize, falling back to local-only storage.', e);
+    cloudDb = null;
+  }
+}
+
+// Keys that should be shared across every device. Session (who's logged in on
+// THIS device) intentionally stays local-only — each device keeps its own login.
+const CLOUD_SYNCED_KEYS = Object.keys(STORAGE_KEYS)
+  .filter(k => k !== 'session')
+  .map(k => STORAGE_KEYS[k]);
+
+function handleCloudChange(key) {
+  const current = getSession();
+  if (!current) return;
+  if (key === STORAGE_KEYS.submissions && current.role === 'admin') {
+    notifyBrowser('Nimbus', 'A student submitted homework for review.');
+  }
+  if (key === STORAGE_KEYS.messages) {
+    if (current.role === 'admin') notifyBrowser('Nimbus', 'New message from a student.');
+    if (current.role === 'learner') notifyBrowser('Nimbus', ADMIN_NAME + ' sent you a message.');
+  }
+  if (key === STORAGE_KEYS.assignments && current.role === 'learner') {
+    notifyBrowser('Nimbus', 'New homework has been posted.');
+  }
+}
+
+// Sets up one realtime listener per data collection. Calls onReady() once all
+// of them have loaded at least once, then keeps re-rendering as changes arrive
+// from any device (teacher's laptop, a student's phone, etc.).
+function startCloudSync(onReady) {
+  if (!CLOUD_ENABLED || !cloudDb) { onReady && onReady(); return; }
+  let settled = false;
+  const finish = () => { if (settled) return; settled = true; cloudReady = true; clearTimeout(safetyTimer); onReady && onReady(); };
+  // Never let a stuck or blocked network request leave the app blank forever.
+  const safetyTimer = setTimeout(finish, 4000);
+  let pending = CLOUD_SYNCED_KEYS.length;
+  const oneDone = () => { pending--; if (pending <= 0) finish(); };
+  CLOUD_SYNCED_KEYS.forEach(key => {
+    try {
+      cloudDb.collection('nimbus').doc(key).onSnapshot(snap => {
+        const json = snap.exists ? snap.data().json : null;
+        const changed = json != null && cloudCache[key] !== json;
+        if (json != null) { cloudCache[key] = json; localStorage.setItem(key, json); }
+        if (!settled) { oneDone(); return; }
+        if (changed) { handleCloudChange(key); render(); }
+      }, err => {
+        console.warn('Nimbus cloud sync error for', key, err);
+        if (!settled) oneDone();
+      });
+    } catch (e) {
+      console.warn('Nimbus cloud sync setup failed for', key, e);
+      if (!settled) oneDone();
+    }
+  });
+}
+
+// Drop-in replacements for localStorage.getItem/setItem used by every
+// get*/save* function below — reads/writes the cloud mirror when configured,
+// and transparently falls back to plain localStorage otherwise.
+function storageGet(key) {
+  if (CLOUD_ENABLED && key in cloudCache) return cloudCache[key];
+  return localStorage.getItem(key);
+}
+function storageSet(key, value) {
+  localStorage.setItem(key, value);
+  if (CLOUD_ENABLED && cloudDb) {
+    cloudCache[key] = value;
+    cloudDb.collection('nimbus').doc(key).set({ json: value, updatedAt: Date.now() })
+      .catch(err => console.warn('Nimbus cloud save failed for', key, err));
+  }
+}
+
 function seedAssignments() {
   return [
     {
@@ -370,24 +519,28 @@ function seedAssignments() {
   ];
 }
 function getAssignments() {
-  const raw = localStorage.getItem(STORAGE_KEYS.assignments);
-  if (!raw) { const seed = seedAssignments(); localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(seed)); return seed; }
+  const raw = storageGet(STORAGE_KEYS.assignments);
+  if (!raw) {
+    const seed = seedAssignments();
+    if (!assignmentsSeededThisLoad) { assignmentsSeededThisLoad = true; storageSet(STORAGE_KEYS.assignments, JSON.stringify(seed)); }
+    return seed;
+  }
   try { return JSON.parse(raw); } catch (e) { return seedAssignments(); }
 }
-function saveAssignments(list) { localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(list)); }
+function saveAssignments(list) { storageSet(STORAGE_KEYS.assignments, JSON.stringify(list)); }
 
 function getStudents() {
-  const raw = localStorage.getItem(STORAGE_KEYS.students);
+  const raw = storageGet(STORAGE_KEYS.students);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveStudents(list) { localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(list)); }
+function saveStudents(list) { storageSet(STORAGE_KEYS.students, JSON.stringify(list)); }
 function findStudent(id) { return getStudents().find(s => s.id === (id || '').toLowerCase()) || null; }
 
 function getSubmissions() {
-  const raw = localStorage.getItem(STORAGE_KEYS.submissions);
+  const raw = storageGet(STORAGE_KEYS.submissions);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveSubmissions(list) { localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(list)); }
+function saveSubmissions(list) { storageSet(STORAGE_KEYS.submissions, JSON.stringify(list)); }
 function getSubmission(assignmentId, studentId) {
   return getSubmissions().find(s => s.assignmentId === assignmentId && s.studentId === studentId) || null;
 }
@@ -400,10 +553,10 @@ function upsertSubmission(assignmentId, studentId, patch) {
 }
 
 function getMessages() {
-  const raw = localStorage.getItem(STORAGE_KEYS.messages);
+  const raw = storageGet(STORAGE_KEYS.messages);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveMessages(list) { localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(list)); }
+function saveMessages(list) { storageSet(STORAGE_KEYS.messages, JSON.stringify(list)); }
 function getThread(studentId) { return getMessages().filter(m => m.studentId === studentId).sort((a, b) => a.ts - b.ts); }
 function sendMessage(studentId, sender, text) {
   const list = getMessages();
@@ -424,10 +577,10 @@ function markThreadRead(studentId, asRole) {
 }
 
 function getSeenMap() {
-  const raw = localStorage.getItem(STORAGE_KEYS.seen);
+  const raw = storageGet(STORAGE_KEYS.seen);
   try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
 }
-function saveSeenMap(map) { localStorage.setItem(STORAGE_KEYS.seen, JSON.stringify(map)); }
+function saveSeenMap(map) { storageSet(STORAGE_KEYS.seen, JSON.stringify(map)); }
 function getSeenIds(studentId) { const map = getSeenMap(); return map[studentId] || []; }
 function markAllSeen(studentId) { const map = getSeenMap(); map[studentId] = getAssignments().map(a => a.id); saveSeenMap(map); }
 
@@ -475,7 +628,7 @@ function exportBackup() {
   const data = {};
   Object.keys(STORAGE_KEYS).forEach(k => {
     if (k === 'session') return;
-    const raw = localStorage.getItem(STORAGE_KEYS[k]);
+    const raw = storageGet(STORAGE_KEYS[k]);
     if (raw != null) data[STORAGE_KEYS[k]] = raw;
   });
   const payload = { app: 'nimbus', exportedAt: Date.now(), data };
@@ -495,7 +648,7 @@ function importBackupFile(file) {
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || parsed.app !== 'nimbus' || !parsed.data) throw new Error('bad file');
-      Object.keys(parsed.data).forEach(key => localStorage.setItem(key, parsed.data[key]));
+      Object.keys(parsed.data).forEach(key => storageSet(key, parsed.data[key]));
       showToast('Backup restored!');
       render();
     } catch (e) {
@@ -617,6 +770,53 @@ window.addEventListener('popstate', () => {
 });
 let adminNav = 'dashboard';
 let learnerNav = 'dashboard';
+let studioFiles = {
+  'index.html': '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>My Page</title>\n  <connect="style.css">\n</head>\n<body>\n\n  <connect="script.js">\n</body>\n</html>',
+  'style.css': 'body {\n  \n}\n',
+  'script.js': '\n'
+};
+let studioTabs = ['index.html'];
+let studioActiveFile = 'index.html';
+let studioSidebarOpen = false;
+let studioSeq = 0;
+
+function studioFileLang(name) {
+  if (/\.css$/i.test(name)) return 'css';
+  if (/\.(js|mjs)$/i.test(name)) return 'js';
+  return 'html';
+}
+function studioFileBadge(name) {
+  if (/\.css$/i.test(name)) return { l: 'C', bg: '#2F5D8A', fg: '#BFE0FF' };
+  if (/\.(js|mjs)$/i.test(name)) return { l: 'J', bg: '#8A6A1E', fg: '#FCE7A6' };
+  return { l: 'H', bg: '#A4321E', fg: '#F6C9BB' };
+}
+function studioFileIconHtml(name) {
+  const b = studioFileBadge(name);
+  return `<span class="shrink-0 rounded-[5px] flex items-center justify-center text-[9px] font-bold font-mono2" style="width:18px;height:18px;background:${b.bg};color:${b.fg};">${b.l}</span>`;
+}
+function studioOpenTab(name) {
+  if (!studioTabs.includes(name)) studioTabs.push(name);
+  studioActiveFile = name;
+}
+function studioResolveConnects(sourceName, seen) {
+  seen = seen || new Set();
+  seen.add(sourceName);
+  const src = studioFiles[sourceName] || '';
+  return src.replace(/<connect\s*=\s*["']([^"']+)["']\s*\/?>/gi, (match, raw) => {
+    const fname = raw.trim();
+    if (!(fname in studioFiles) || seen.has(fname)) return '';
+    const content = studioFiles[fname] || '';
+    if (/\.css$/i.test(fname)) return '<style>\n' + content + '\n</style>';
+    if (/\.(js|mjs)$/i.test(fname)) return '<script>\n' + content + '\n</scr' + 'ipt>';
+    return '';
+  });
+}
+function studioEntryFile() {
+  const names = Object.keys(studioFiles);
+  return names.find(n => n.toLowerCase() === 'index.html')
+    || names.find(n => /\.html?$/i.test(n))
+    || studioActiveFile;
+}
 let bannerDismissed = false;
 let editingAssignmentId = null; // assignment being edited in the Create/Edit form
 let deferredInstallPrompt = null; // captured beforeinstallprompt event, for the "Install App" button
@@ -826,7 +1026,7 @@ function renderSidebar(role, activeNav, userName, session) {
       { id: 'create', label: 'Create Homework', icon: 'pencil' },
       { id: 'tasks', label: 'Published Tasks', icon: 'listChecks', badge: pendingReview, badgeDot: pendingReview > 0 },
       { id: 'students', label: 'Students', icon: 'users', badge: unreadMsgs, badgeDot: unreadMsgs > 0 },
-      { id: 'studio', label: 'Code Studio', icon: 'code' }
+      { id: 'studio', label: 'HTML Studio', icon: 'code' }
     ];
   } else {
     const studentId = session?.id;
@@ -836,7 +1036,7 @@ function renderSidebar(role, activeNav, userName, session) {
     navItems = [
       { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
       { id: 'homework', label: 'Homework', icon: 'pencil', badge: homeworkBadge, badgeDot: progress.revision > 0 },
-      { id: 'studio', label: 'Code Studio', icon: 'code' },
+      { id: 'studio', label: 'HTML Studio', icon: 'code' },
       { id: 'notification', label: 'Notification', icon: 'chat', badge: unread, badgeDot: unread > 0 }
     ];
   }
@@ -936,7 +1136,7 @@ function renderAdmin() {
           ${adminNav === 'create' ? renderAdminCreate(session)
             : adminNav === 'tasks' ? renderAdminTasks(session)
             : adminNav === 'students' ? renderAdminStudents(session)
-            : adminNav === 'studio' ? renderCodeStudioEmbed(session)
+            : adminNav === 'studio' ? renderLearnerStudio(session)
             : renderAdminDashboard(session)}
         </div>
       </main>
@@ -1683,7 +1883,7 @@ function renderLearner() {
           ` : ''}
 
           ${learnerNav === 'homework' ? renderLearnerHomework(session)
-            : learnerNav === 'studio' ? renderCodeStudioEmbed(session)
+            : learnerNav === 'studio' ? renderLearnerStudio(session)
             : learnerNav === 'notification' ? renderLearnerNotification(session)
             : renderLearnerDashboard(session)}
 
@@ -1831,27 +2031,786 @@ function renderLearnerNotification(session) {
   `;
 }
 
-// ---------- CODE STUDIO — full-screen embed of the standalone code-studio.html app ----------
-function renderCodeStudioEmbed(session) {
+// ---------- HTML STUDIO — standalone free-form editor, not tied to homework ----------
+function renderLearnerStudio(session) {
+  const menuItem = (id, icon, label) => `
+    <button type="button" id="${id}" class="studio-menu-item">
+      <span class="flex items-center gap-2.5">${ic(icon, 'w-4 h-4 text-paper/60')} ${label}</span>
+    </button>`;
+
   return `
   <div id="studio-fullscreen">
-    <iframe id="code-studio-frame" src="code-studio.html" title="Code Studio"></iframe>
+    <div class="studio-sidebar-overlay" id="studio-sidebar-overlay"></div>
+    <div class="studio-sidebar" id="studio-sidebar">
+      <div class="flex items-center justify-between px-4 py-4 border-b border-paper/10 shrink-0">
+        <span class="text-paper font-display font-semibold text-sm">Files</span>
+        <button type="button" id="studio-sidebar-newfile" title="New file" class="w-8 h-8 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/70">${ic('plus', 'w-4 h-4')}</button>
+      </div>
+      <div id="studio-file-list" class="flex-1 overflow-y-auto py-2"></div>
+      <div class="px-4 py-3 border-t border-paper/10 shrink-0">
+        <button type="button" id="studio-sidebar-exit" class="btn-press w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-paper/10 text-paper/80 text-xs font-semibold">${ic('logout', 'w-3.5 h-3.5')} Exit Studio</button>
+      </div>
+    </div>
+
+    <div id="studio-shell" class="flex-1 min-h-0 flex flex-col">
+      <div class="flex items-center gap-2.5 px-3 py-2.5 bg-[#241D16] border-b border-paper/10 shrink-0 relative">
+        <button id="studio-hamburger-btn" title="Files" class="w-8 h-8 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/80 shrink-0">${ic('menu', 'w-4.5 h-4.5')}</button>
+        <div class="min-w-0 flex-1">
+          <p id="studio-filename" class="text-paper/90 text-xs font-semibold truncate leading-tight font-mono2">${escapeHtml(studioActiveFile)}</p>
+          <p id="studio-filestatus" class="text-paper/40 text-[10px] font-mono2 leading-tight">Ready</p>
+        </div>
+        <button id="studio-run-btn" title="Run" class="btn-press w-8 h-8 rounded-full bg-moss/20 text-moss flex items-center justify-center shrink-0">${ic('play', 'w-4 h-4')}</button>
+        <div class="relative shrink-0">
+          <button id="studio-more-btn" title="More" class="w-8 h-8 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/70">${ic('moreVertical', 'w-4 h-4')}</button>
+        </div>
+      </div>
+
+      <div id="studio-tabbar" class="flex items-stretch overflow-x-auto shrink-0"></div>
+
+      <div id="studio-fs-editor-area">
+        <div class="absolute inset-0 flex overflow-hidden">
+          <div id="studio-code-gutter" class="code-gutter shrink-0"><div>1</div></div>
+          <div class="relative flex-1 min-w-0">
+            <pre id="studio-code-highlight" class="code-highlight-pre" aria-hidden="true"><code id="studio-code-highlight-code" class="language-markup"></code></pre>
+            <textarea id="studio-code-input" spellcheck="false" autocapitalize="off" autocorrect="off" wrap="off"
+              class="code-editor-input" placeholder="Start typing…"></textarea>
+          </div>
+        </div>
+
+        <div id="studio-console-panel" class="hidden-menu absolute inset-x-0 bottom-0 z-20 bg-ink/98 border-t border-paper/15 flex flex-col overflow-hidden">
+          <div class="flex items-center justify-between px-3.5 py-2 border-b border-paper/10 shrink-0">
+            <span class="text-[10px] font-mono2 uppercase tracking-widest text-paper/50">Console</span>
+            <div class="flex items-center gap-1">
+              <button type="button" id="studio-console-clear" class="text-[10px] font-mono2 uppercase tracking-wide text-paper/50 hover:text-paper px-2 py-1">Clear</button>
+              <button type="button" id="studio-console-close" class="w-6 h-6 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/60">${ic('x', 'w-3.5 h-3.5')}</button>
+            </div>
+          </div>
+          <div id="studio-console-log" class="flex-1 overflow-y-auto px-3.5 py-2 font-mono2 text-[11px] text-paper/80">
+            <p class="text-paper/30 italic">Run your code to see console output here.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="studio-code-toolbar" class="bg-ink border-t border-paper/15 px-2 pt-2.5 pb-2.5 shrink-0">
+        <div class="flex items-center gap-2 pb-2.5 mb-2.5 border-b border-paper/10">
+          <button type="button" id="studio-mck-tab" class="mck-key shrink-0 px-4 h-10 rounded-xl bg-paper/15 text-paper text-xs font-mono2 font-semibold tracking-wide">TAB</button>
+          <div class="mck-row-scroll flex items-center gap-2 overflow-x-auto">
+            ${['{','}','[',']','(',')','<','>',';',"'",'"','/','\\','_','-','=','+','#','.',',','%'].map(ch => `<button type="button" data-studiomck-ins="${ch === '"' ? '&quot;' : ch}" class="mck-key shrink-0 w-10 h-10 rounded-xl bg-paper/10 text-paper text-base font-mono2 flex items-center justify-center">${escapeHtml(ch)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="mck-row-scroll flex items-center gap-2 overflow-x-auto">
+          <button type="button" id="studio-mck-ctrl" class="mck-key mck-mod shrink-0 px-3 h-9 rounded-xl bg-paper/10 text-paper text-[11px] font-mono2 font-semibold tracking-wide">CTRL</button>
+          <button type="button" id="studio-mck-shift" class="mck-key mck-mod shrink-0 px-3 h-9 rounded-xl bg-paper/10 text-paper text-[11px] font-mono2 font-semibold tracking-wide">SHFT</button>
+          <button type="button" id="studio-mck-undo" title="Undo" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('undo2', 'w-4 h-4')}</button>
+          <button type="button" id="studio-mck-redo" title="Redo" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('redo2', 'w-4 h-4')}</button>
+          <button type="button" id="studio-mck-search" title="Find" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('search', 'w-3.5 h-3.5')}</button>
+          <span class="w-1 shrink-0"></span>
+          <button type="button" data-studiomck-move="home" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-sm font-mono2 flex items-center justify-center">⇤</button>
+          <button type="button" data-studiomck-move="left" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">←</button>
+          <button type="button" data-studiomck-move="up" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">↑</button>
+          <button type="button" data-studiomck-move="down" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">↓</button>
+          <button type="button" data-studiomck-move="right" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">→</button>
+          <button type="button" data-studiomck-move="end" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-sm font-mono2 flex items-center justify-center">⇥</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="studio-menu-overlay hidden-menu" id="studio-menu-overlay"></div>
+    <div id="studio-more-menu-full">
+      ${menuItem('studio-menu-new', 'plus', 'New file')}
+      ${menuItem('studio-menu-save', 'save', 'Save')}
+      ${menuItem('studio-menu-saveas', 'save', 'Save as')}
+      ${menuItem('studio-menu-files', 'folder', 'Files')}
+      ${menuItem('studio-menu-close', 'x', 'Close file')}
+      <div class="studio-menu-divider"></div>
+      ${menuItem('studio-menu-recent', 'history', 'Open recent')}
+      ${menuItem('studio-menu-find', 'search', 'Find file')}
+      <div class="studio-menu-divider"></div>
+      ${menuItem('studio-menu-console', 'terminal', 'Console')}
+      ${menuItem('studio-menu-terminal', 'terminal', 'Terminal')}
+      <div class="studio-menu-divider"></div>
+      ${menuItem('studio-menu-settings', 'settingsGear', 'Settings')}
+      ${menuItem('studio-menu-help', 'helpCircle', 'Help')}
+      <div class="studio-menu-divider"></div>
+      ${menuItem('studio-menu-exit', 'logout', 'Exit')}
+    </div>
+
+    <div id="studio-preview-overlay" class="hidden fixed inset-0 z-[220] bg-white flex flex-col">
+      <div class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-ink/10 bg-papercard shrink-0">
+        <span class="text-sm font-semibold text-ink flex items-center gap-2">${ic('eyePreview', 'w-4 h-4 text-graphite')} Preview</span>
+        <button id="studio-preview-close" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite">${ic('x', 'w-5 h-5')}</button>
+      </div>
+      <iframe id="studio-preview-frame" class="flex-1 w-full border-0" sandbox="allow-scripts allow-modals allow-forms allow-popups"></iframe>
+    </div>
   </div>
   `;
 }
 
-// The embedded code-studio.html posts a message when its Exit button is used;
-// catch it here and drop the user back on the dashboard. Wired once, globally,
-// since renderCodeStudioEmbed() can be invoked many times across re-renders.
-if (!window.__codeStudioExitWired) {
-  window.__codeStudioExitWired = true;
-  window.addEventListener('message', (e) => {
-    const data = e.data;
-    if (!data || data.__codeStudioExit !== true) return;
+function buildStudioConsoleShim() {
+  return `<script>(function(){
+    function send(type, args){
+      try {
+        window.parent.postMessage({ __studioConsole: true, type: type, args: args.map(function(a){
+          try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
+        }) }, '*');
+      } catch (e) {}
+    }
+    ['log','warn','error','info'].forEach(function(m){
+      var orig = console[m];
+      console[m] = function(){ send(m, Array.prototype.slice.call(arguments)); try { orig && orig.apply(console, arguments); } catch (e) {} };
+    });
+    window.addEventListener('error', function(e){ send('error', [(e.message || 'Script error') + ' (line ' + (e.lineno || '?') + ')']); });
+  })();</scr` + `ipt>`;
+}
+
+function studioRenderTabs() {
+  const bar = document.getElementById('studio-tabbar');
+  if (!bar) return;
+  bar.innerHTML = studioTabs.map(name => {
+    const active = name === studioActiveFile;
+    return `
+    <div class="studio-tab shrink-0 flex items-center gap-2 pl-3 pr-2 py-2.5 cursor-pointer select-none ${active ? 'is-active' : ''}" data-studio-tab="${escapeHtml(name)}">
+      ${studioFileIconHtml(name)}
+      <span class="text-[11px] font-mono2 ${active ? 'text-paper' : 'text-paper/55'} whitespace-nowrap">${escapeHtml(name)}</span>
+      <button type="button" class="studio-tab-close w-4 h-4 flex items-center justify-center text-paper/60 shrink-0" data-studio-tab-close="${escapeHtml(name)}">${ic('x', 'w-3 h-3')}</button>
+    </div>`;
+  }).join('');
+}
+
+function studioRenderFileList() {
+  const list = document.getElementById('studio-file-list');
+  if (!list) return;
+  const names = Object.keys(studioFiles);
+  list.innerHTML = names.map(name => `
+    <div class="studio-file-row flex items-center gap-2.5 px-4 py-2.5 cursor-pointer ${name === studioActiveFile ? 'is-active' : ''}" data-studio-file="${escapeHtml(name)}">
+      ${studioFileIconHtml(name)}
+      <span class="flex-1 min-w-0 text-paper/85 text-[13px] truncate">${escapeHtml(name)}</span>
+      ${names.length > 1 ? `<button type="button" class="w-6 h-6 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/40 shrink-0" data-studio-file-delete="${escapeHtml(name)}">${ic('trash2', 'w-3.5 h-3.5')}</button>` : ''}
+    </div>
+  `).join('');
+}
+
+function wireStudioEditor() {
+  const inputEl = document.getElementById('studio-code-input');
+  const gutterEl = document.getElementById('studio-code-gutter');
+  const highlightPreEl = document.getElementById('studio-code-highlight');
+  const highlightCodeEl = document.getElementById('studio-code-highlight-code');
+  const toolbarEl = document.getElementById('studio-code-toolbar');
+  const filenameEl = document.getElementById('studio-filename');
+  const filestatusEl = document.getElementById('studio-filestatus');
+  if (!inputEl || !gutterEl || !highlightPreEl || !highlightCodeEl) return;
+
+  const HEAVY_DOC_CHARS = 20000;
+  const MAX_GUTTER_LINES = 4000;
+  const VOID_TAGS = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr','connect']);
+  const fireInput = () => inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  const exitStudioToDashboard = () => {
     const session = getSession();
     if (session?.role === 'admin') adminNav = 'dashboard'; else learnerNav = 'dashboard';
+  };
+
+  const updateGutter = () => {
+    try {
+      const lines = inputEl.value.split('\n').length;
+      if (gutterEl.dataset.lines != lines) {
+        gutterEl.dataset.lines = lines;
+        const cap = Math.min(lines, MAX_GUTTER_LINES);
+        let html = '';
+        for (let i = 1; i <= cap; i++) html += `<div>${i}</div>`;
+        gutterEl.innerHTML = html;
+      }
+    } catch (err) {}
+  };
+  const setRawOverlayText = () => { try { highlightCodeEl.textContent = inputEl.value; } catch (err) {} };
+  const runHighlight = () => {
+    try {
+      const lang = prismLangFor(studioFileLang(studioActiveFile));
+      highlightCodeEl.className = 'language-' + lang;
+      highlightCodeEl.textContent = inputEl.value;
+      if (inputEl.value.length <= HEAVY_DOC_CHARS && window.Prism && Prism.languages[lang]) {
+        Prism.highlightElement(highlightCodeEl);
+      }
+    } catch (err) {}
+  };
+
+  // Highlight is applied immediately on every keystroke (not after a delay),
+  // so colored text never drops back to plain and re-colors a moment later.
+  let syncRaf = null, isComposing = false;
+  const syncVisuals = () => {
+    if (isComposing) return;
+    runHighlight();
+    if (syncRaf) cancelAnimationFrame(syncRaf);
+    syncRaf = requestAnimationFrame(() => { syncRaf = null; updateGutter(); });
+  };
+
+  // ---- Multi-file: load the active file into the textarea, save the previous one first ----
+  const syncScrollPositions = () => {
+    highlightPreEl.scrollTop = inputEl.scrollTop;
+    highlightPreEl.scrollLeft = inputEl.scrollLeft;
+    gutterEl.scrollTop = inputEl.scrollTop;
+  };
+  // Belt-and-suspenders: rather than trust every individual event (scroll,
+  // input, keyup, viewport resize...) to fire in the right order, just keep
+  // the gutter/overlay locked to the textarea's actual scroll position on
+  // every animation frame while it's focused. This is what the caret is
+  // really drawn against, so nothing can visibly lag behind it anymore.
+  let scrollSyncRaf = null;
+  const runScrollSyncLoop = () => {
+    if (document.activeElement !== inputEl) { scrollSyncRaf = null; return; }
+    syncScrollPositions();
+    scrollSyncRaf = requestAnimationFrame(runScrollSyncLoop);
+  };
+  const startScrollSyncLoop = () => { if (!scrollSyncRaf) scrollSyncRaf = requestAnimationFrame(runScrollSyncLoop); };
+  inputEl.addEventListener('focus', startScrollSyncLoop);
+
+  const loadActiveFile = () => {
+    inputEl.value = studioFiles[studioActiveFile] || '';
+    if (filenameEl) filenameEl.textContent = studioActiveFile;
+    if (filestatusEl) filestatusEl.textContent = studioFileLang(studioActiveFile).toUpperCase();
+    gutterEl.dataset.lines = '';
+    updateGutter(); runHighlight();
+    inputEl.scrollTop = 0; inputEl.scrollLeft = 0;
+    syncScrollPositions();
+    studioRenderTabs();
+    studioRenderFileList();
+  };
+  const switchToFile = (name) => {
+    if (!(name in studioFiles)) return;
+    studioFiles[studioActiveFile] = inputEl.value;
+    studioOpenTab(name);
+    loadActiveFile();
+  };
+  loadActiveFile();
+
+  inputEl.addEventListener('input', () => { studioFiles[studioActiveFile] = inputEl.value; syncVisuals(); });
+  inputEl.addEventListener('scroll', syncScrollPositions);
+
+  const ensureCaretVisible = () => {
+    if (document.activeElement !== inputEl || isComposing) return;
+    const style = getComputedStyle(inputEl);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const caretLine = inputEl.value.slice(0, inputEl.selectionEnd).split('\n').length;
+    const caretTop = paddingTop + (caretLine - 1) * lineHeight;
+    const caretBottom = caretTop + lineHeight;
+    const visibleTop = inputEl.scrollTop;
+    const visibleBottom = visibleTop + inputEl.clientHeight - paddingBottom;
+    // Setting scrollTop fires a native 'scroll' event asynchronously, so the
+    // overlay text and gutter can briefly lag a frame behind the (invisible)
+    // textarea caret — which looks like the cursor sitting on the wrong
+    // line. Syncing them synchronously right here removes that gap.
+    if (caretTop < visibleTop) { inputEl.scrollTop = caretTop; syncScrollPositions(); }
+    else if (caretBottom > visibleBottom) { inputEl.scrollTop = caretBottom - inputEl.clientHeight + paddingBottom; syncScrollPositions(); }
+  };
+  inputEl.addEventListener('input', ensureCaretVisible);
+  inputEl.addEventListener('keyup', (e) => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Enter'].includes(e.key)) ensureCaretVisible();
+  });
+  inputEl.addEventListener('click', ensureCaretVisible);
+  inputEl.addEventListener('focus', () => setTimeout(() => { ensureCaretVisible(); syncScrollPositions(); }, 50));
+
+  // ---- Keep the caret visible above the on-screen keyboard ----
+  // The shell's height now follows the CSS `100dvh` (dynamic viewport
+  // height) so it naturally shrinks when the keyboard opens — no JS
+  // resizing here, since repeatedly rewriting the container's inline
+  // height while typing was what caused the caret to jump/misbehave on
+  // Enter. We just re-check the caret position once the keyboard has
+  // finished animating in or out. The browser can also nudge the
+  // textarea's own scrollTop during that resize without firing a 'scroll'
+  // event we catch in time, so we force a sync afterwards too.
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const onViewportChange = () => {
+      if (document.activeElement !== inputEl) return;
+      setTimeout(() => { ensureCaretVisible(); syncScrollPositions(); }, 60);
+    };
+    vv.addEventListener('resize', onViewportChange);
+    vv.addEventListener('scroll', onViewportChange);
+  }
+
+  // ---- Extra scroll room while the keyboard is open ----
+  // If you're typing near the end of the file, there's no content below
+  // the last line for the editor to scroll to — so pressing Enter moves
+  // the gutter/caret to the new line, but the text itself can't scroll up
+  // any further to actually reveal it above the keyboard. Padding the
+  // bottom of the editor just enough to let the last real line reach the
+  // top of the visible area (roughly one screenful) gives it somewhere to
+  // scroll to, without leaving a big block of obviously-blank space.
+  const setKeyboardPadding = (on) => {
+    const lineHeight = parseFloat(getComputedStyle(inputEl).lineHeight) || 20;
+    const extraPx = on ? Math.max(0, inputEl.clientHeight - lineHeight * 2) : 0;
+    const padBottom = on ? `calc(1.25rem + ${Math.round(extraPx)}px)` : '';
+    inputEl.style.paddingBottom = padBottom;
+    highlightPreEl.style.paddingBottom = padBottom;
+    gutterEl.style.paddingBottom = padBottom;
+    syncScrollPositions();
+  };
+  inputEl.addEventListener('focus', () => { setKeyboardPadding(true); setTimeout(() => { ensureCaretVisible(); syncScrollPositions(); }, 60); });
+  inputEl.addEventListener('blur', () => setKeyboardPadding(false));
+
+  inputEl.addEventListener('compositionstart', () => {
+    isComposing = true;
+    inputEl.classList.add('is-composing');
+    highlightPreEl.classList.add('is-hidden-composing');
+  });
+  inputEl.addEventListener('compositionend', () => {
+    isComposing = false;
+    inputEl.classList.remove('is-composing');
+    highlightPreEl.classList.remove('is-hidden-composing');
+    studioFiles[studioActiveFile] = inputEl.value;
+    syncVisuals();
+    ensureCaretVisible();
+  });
+
+  // ---- Auto-close tags/brackets as you type, and delete empty pairs together ----
+  const OPEN_TO_CLOSE = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
+  const CLOSE_CHARS = new Set(['}', ']', ')', '"', "'"]);
+  const EMPTY_PAIRS = new Set(['{}', '[]', '()', '""', "''"]);
+  let studioStCtrl = false; // set below once the toolbar CTRL key exists
+
+  inputEl.addEventListener('beforeinput', (e) => {
+    if (isComposing || studioStCtrl) return;
+    const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+
+    if (e.inputType === 'insertText' && e.data === '>' && start === end) {
+      const before = inputEl.value.slice(0, start);
+      const m = before.match(/<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'<>])*)$/);
+      if (m) {
+        const tagName = m[1];
+        const selfClosing = /\/\s*$/.test(m[2]);
+        if (!selfClosing && !VOID_TAGS.has(tagName.toLowerCase())) {
+          const after = inputEl.value.slice(end);
+          const alreadyClosed = new RegExp('^\\s*</' + tagName + '\\b', 'i').test(after);
+          if (!alreadyClosed) {
+            e.preventDefault();
+            const insertText = '>' + '</' + tagName + '>';
+            inputEl.value = before + insertText + inputEl.value.slice(end);
+            inputEl.selectionStart = inputEl.selectionEnd = start + 1;
+            studioFiles[studioActiveFile] = inputEl.value;
+            fireInput(); syncVisuals();
+            return;
+          }
+        }
+      }
+    }
+
+    if (e.inputType === 'insertText' && e.data && e.data.length === 1) {
+      const ch = e.data;
+      if (OPEN_TO_CLOSE[ch] && start === end) {
+        e.preventDefault();
+        const closer = OPEN_TO_CLOSE[ch];
+        inputEl.value = inputEl.value.slice(0, start) + ch + closer + inputEl.value.slice(end);
+        inputEl.selectionStart = inputEl.selectionEnd = start + 1;
+        studioFiles[studioActiveFile] = inputEl.value;
+        fireInput(); syncVisuals();
+        return;
+      }
+      if (CLOSE_CHARS.has(ch) && start === end && inputEl.value[start] === ch) {
+        e.preventDefault();
+        inputEl.selectionStart = inputEl.selectionEnd = start + 1;
+        return;
+      }
+    }
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !isComposing) {
+      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+      if (start === end && start > 0) {
+        const pair = inputEl.value.slice(start - 1, start + 1);
+        if (EMPTY_PAIRS.has(pair)) {
+          e.preventDefault();
+          inputEl.value = inputEl.value.slice(0, start - 1) + inputEl.value.slice(start + 1);
+          inputEl.selectionStart = inputEl.selectionEnd = start - 1;
+          studioFiles[studioActiveFile] = inputEl.value;
+          fireInput(); syncVisuals();
+          return;
+        }
+        // deleting an opening tag's "<" right before its own auto-closed pair removes both
+        const before = inputEl.value.slice(0, start);
+        const after = inputEl.value.slice(start);
+        const openMatch = before.match(/<([a-zA-Z][a-zA-Z0-9-]*)>$/);
+        if (openMatch && new RegExp('^</' + openMatch[1] + '>').test(after)) {
+          e.preventDefault();
+          const closeLen = openMatch[1].length + 3;
+          inputEl.value = before.slice(0, before.length - openMatch[0].length) + after.slice(closeLen);
+          inputEl.selectionStart = inputEl.selectionEnd = start - openMatch[0].length;
+          studioFiles[studioActiveFile] = inputEl.value;
+          fireInput(); syncVisuals();
+        }
+      }
+    }
+  });
+
+  // TAB to indent; smart Enter steps inside an opening tag/brace and drops
+  // the matching close onto its own line, mirroring the Homework editor.
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+      inputEl.value = inputEl.value.slice(0, start) + '  ' + inputEl.value.slice(end);
+      inputEl.selectionStart = inputEl.selectionEnd = start + 2;
+      studioFiles[studioActiveFile] = inputEl.value;
+      fireInput();
+      return;
+    }
+    if (e.key === 'Enter') {
+      const val = inputEl.value;
+      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+      if (start !== end) return;
+      e.preventDefault();
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+      const beforeCursor = val.slice(lineStart, start);
+      const baseIndent = (beforeCursor.match(/^[ \t]*/) || [''])[0];
+      const trimmed = beforeCursor.trim();
+
+      const tagMatch = trimmed.match(/<\/?([a-zA-Z][a-zA-Z0-9-]*)[^<>]*?(\/)?>$/);
+      const opensTag = !!(tagMatch && !trimmed.slice(trimmed.lastIndexOf('<')).startsWith('</') && !tagMatch[2] && !VOID_TAGS.has(tagMatch[1].toLowerCase()));
+      const opensBrace = /[{(\[]$/.test(trimmed);
+
+      const after = val.slice(start);
+      let stepsInside = false;
+      if (opensTag) stepsInside = new RegExp('^\\s*</' + tagMatch[1] + '\\s*>').test(after);
+      else if (opensBrace) {
+        const closerFor = { '{': '}', '(': ')', '[': ']' };
+        stepsInside = new RegExp('^\\s*\\' + closerFor[trimmed.slice(-1)]).test(after);
+      }
+
+      let insert, caretOffset;
+      if ((opensTag || opensBrace) && stepsInside) {
+        const inner = baseIndent + '  ';
+        insert = '\n' + inner + '\n' + baseIndent;
+        caretOffset = 1 + inner.length;
+      } else if (opensTag || opensBrace) {
+        insert = '\n' + baseIndent + '  ';
+        caretOffset = insert.length;
+      } else {
+        insert = '\n' + baseIndent;
+        caretOffset = insert.length;
+      }
+      inputEl.value = val.slice(0, start) + insert + val.slice(end);
+      inputEl.selectionStart = inputEl.selectionEnd = start + caretOffset;
+      studioFiles[studioActiveFile] = inputEl.value;
+      fireInput();
+      ensureCaretVisible();
+    }
+  });
+
+  // ---- Bottom toolbar: TAB / symbols / CTRL / SHIFT / arrows / undo / redo / find ----
+  if (toolbarEl) {
+    let stCtrl = false, stShift = false;
+    const ctrlBtn = document.getElementById('studio-mck-ctrl');
+    const shiftBtn = document.getElementById('studio-mck-shift');
+    const tabBtn = document.getElementById('studio-mck-tab');
+    const undoBtn = document.getElementById('studio-mck-undo');
+    const redoBtn = document.getElementById('studio-mck-redo');
+    const searchBtn = document.getElementById('studio-mck-search');
+    const setCtrl = (v) => { stCtrl = v; studioStCtrl = v; ctrlBtn.classList.toggle('active', v); };
+    const setShift = (v) => { stShift = v; shiftBtn.classList.toggle('active', v); };
+
+    const insertAtCursor = (text, cursorOffset) => {
+      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+      inputEl.value = inputEl.value.slice(0, start) + text + inputEl.value.slice(end);
+      inputEl.selectionStart = inputEl.selectionEnd = start + (cursorOffset !== undefined ? cursorOffset : text.length);
+      studioFiles[studioActiveFile] = inputEl.value;
+      fireInput();
+    };
+    const PAIR_OPEN = { '{': '}', '[': ']', '(': ')', '<': '>', '"': '"', "'": "'" };
+    const PAIR_CLOSE_OF = { '}': '{', ']': '[', ')': '(', '>': '<' };
+
+    toolbarEl.querySelectorAll('.mck-key').forEach(btn => btn.addEventListener('pointerdown', (e) => e.preventDefault()));
+    toolbarEl.querySelectorAll('[data-studiomck-ins]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        inputEl.focus();
+        const ch = btn.dataset.studiomckIns;
+        const start = inputEl.selectionStart, end = inputEl.selectionEnd;
+        if (PAIR_OPEN[ch] && start === end) insertAtCursor(ch + PAIR_OPEN[ch], 1);
+        else if (PAIR_CLOSE_OF[ch] && start === end && inputEl.value[start] === ch) inputEl.selectionStart = inputEl.selectionEnd = start + 1;
+        else insertAtCursor(ch);
+      });
+    });
+    tabBtn.addEventListener('click', () => { inputEl.focus(); insertAtCursor('  '); });
+    ctrlBtn.addEventListener('click', () => { inputEl.focus(); setCtrl(!stCtrl); });
+    shiftBtn.addEventListener('click', () => { inputEl.focus(); setShift(!stShift); });
+    undoBtn.addEventListener('click', () => { inputEl.focus(); try { document.execCommand('undo'); } catch (err) {} studioFiles[studioActiveFile] = inputEl.value; syncVisuals(); });
+    redoBtn.addEventListener('click', () => { inputEl.focus(); try { document.execCommand('redo'); } catch (err) {} studioFiles[studioActiveFile] = inputEl.value; syncVisuals(); });
+    searchBtn.addEventListener('click', () => {
+      const q = window.prompt('Find in editor:');
+      if (!q) return;
+      let idx = inputEl.value.indexOf(q, inputEl.selectionEnd || 0);
+      if (idx === -1) idx = inputEl.value.indexOf(q);
+      if (idx === -1) { showToast('Not found: ' + q); return; }
+      inputEl.focus();
+      inputEl.setSelectionRange(idx, idx + q.length);
+      ensureCaretVisible();
+    });
+
+    const runCtrlShortcut = (key) => {
+      const k = key.toLowerCase();
+      if (k === 'a') inputEl.select();
+      else if (k === 'c') {
+        const sel = inputEl.value.slice(inputEl.selectionStart, inputEl.selectionEnd);
+        if (sel && navigator.clipboard) navigator.clipboard.writeText(sel).catch(() => {});
+      } else if (k === 'x') {
+        const s = inputEl.selectionStart, e2 = inputEl.selectionEnd;
+        const sel = inputEl.value.slice(s, e2);
+        if (sel) {
+          if (navigator.clipboard) navigator.clipboard.writeText(sel).catch(() => {});
+          inputEl.value = inputEl.value.slice(0, s) + inputEl.value.slice(e2);
+          inputEl.selectionStart = inputEl.selectionEnd = s;
+          studioFiles[studioActiveFile] = inputEl.value;
+          fireInput();
+        }
+      } else if (k === 'v') {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then(text => { if (text) insertAtCursor(text); }).catch(() => showToast('Long-press the editor to paste.'));
+        } else showToast('Long-press the editor to paste.');
+      } else if (k === 'z') { try { document.execCommand('undo'); } catch (err) {} }
+      else if (k === 'y') { try { document.execCommand('redo'); } catch (err) {} }
+    };
+
+    toolbarEl.querySelectorAll('[data-studiomck-move]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const move = btn.dataset.studiomckMove;
+        const val = inputEl.value;
+        let pos = inputEl.selectionEnd;
+        const anchor = stShift ? inputEl.selectionStart : null;
+        if (move === 'home') pos = val.lastIndexOf('\n', pos - 1) + 1;
+        else if (move === 'end') { const l = val.indexOf('\n', pos); pos = l === -1 ? val.length : l; }
+        else if (move === 'left') pos = Math.max(0, pos - 1);
+        else if (move === 'right') pos = Math.min(val.length, pos + 1);
+        else if (move === 'up' || move === 'down') {
+          const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+          const col = pos - lineStart;
+          if (move === 'up') {
+            if (lineStart === 0) pos = 0;
+            else {
+              const prevLineStart = val.lastIndexOf('\n', lineStart - 2) + 1;
+              pos = prevLineStart + Math.min(col, lineStart - 1 - prevLineStart);
+            }
+          } else {
+            const lineEnd = val.indexOf('\n', pos);
+            if (lineEnd === -1) pos = val.length;
+            else {
+              const nextStart = lineEnd + 1;
+              let nextEnd = val.indexOf('\n', nextStart);
+              if (nextEnd === -1) nextEnd = val.length;
+              pos = nextStart + Math.min(col, nextEnd - nextStart);
+            }
+          }
+        }
+        if (stShift && anchor !== null) {
+          const dir = pos < anchor ? 'backward' : 'forward';
+          inputEl.setSelectionRange(Math.min(anchor, pos), Math.max(anchor, pos), dir);
+        } else {
+          inputEl.setSelectionRange(pos, pos);
+        }
+        inputEl.focus();
+        ensureCaretVisible();
+        if (stCtrl) setCtrl(false);
+      });
+    });
+
+    inputEl.addEventListener('beforeinput', (e) => {
+      if (!stCtrl) return;
+      if (e.inputType === 'insertText' && e.data && e.data.length === 1) {
+        e.preventDefault();
+        runCtrlShortcut(e.data);
+        if (e.data.toLowerCase() !== 'a') setCtrl(false);
+      }
+    });
+    inputEl.addEventListener('keydown', (e) => {
+      if (stCtrl && e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+        e.preventDefault();
+        runCtrlShortcut(e.key);
+        if (e.key.toLowerCase() !== 'a') setCtrl(false);
+      }
+    });
+  }
+
+  // ---- Header: run / hamburger / more menu ----
+  const runBtn = document.getElementById('studio-run-btn');
+  const previewOverlay = document.getElementById('studio-preview-overlay');
+  const previewFrame = document.getElementById('studio-preview-frame');
+  const previewClose = document.getElementById('studio-preview-close');
+  const runStudio = () => {
+    studioFiles[studioActiveFile] = inputEl.value;
+    const entry = studioEntryFile();
+    const doc = buildStudioConsoleShim() + studioResolveConnects(entry);
+    previewFrame.srcdoc = doc;
+    previewOverlay.classList.remove('hidden');
+  };
+  if (runBtn && previewOverlay && previewFrame) {
+    runBtn.addEventListener('click', runStudio);
+    if (previewClose) previewClose.addEventListener('click', () => previewOverlay.classList.add('hidden'));
+  }
+
+  // ---- Sidebar (hamburger) drawer: switch files, create/delete files ----
+  const sidebar = document.getElementById('studio-sidebar');
+  const sidebarOverlay = document.getElementById('studio-sidebar-overlay');
+  const hamburgerBtn = document.getElementById('studio-hamburger-btn');
+  const openSidebar = () => { studioSidebarOpen = true; sidebar.classList.add('open'); sidebarOverlay.classList.add('open'); studioRenderFileList(); };
+  const closeSidebar = () => { studioSidebarOpen = false; sidebar.classList.remove('open'); sidebarOverlay.classList.remove('open'); };
+  if (hamburgerBtn) hamburgerBtn.addEventListener('click', openSidebar);
+  if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
+
+  const promptNewFile = () => {
+    const name = (window.prompt('New file name (e.g. about.html, style.css, app.js):') || '').trim();
+    if (!name) return;
+    if (studioFiles[name] !== undefined) { switchToFile(name); closeSidebar(); return; }
+    studioFiles[studioActiveFile] = inputEl.value;
+    studioFiles[name] = '';
+    studioOpenTab(name);
+    loadActiveFile();
+    closeSidebar();
+    inputEl.focus();
+    showToast('Created ' + name);
+  };
+  const sidebarNewFileBtn = document.getElementById('studio-sidebar-newfile');
+  if (sidebarNewFileBtn) sidebarNewFileBtn.addEventListener('click', promptNewFile);
+
+  const sidebarExitBtn = document.getElementById('studio-sidebar-exit');
+  if (sidebarExitBtn) sidebarExitBtn.addEventListener('click', () => {
+    studioFiles[studioActiveFile] = inputEl.value;
+    exitStudioToDashboard();
     render();
   });
+
+  const fileList = document.getElementById('studio-file-list');
+  if (fileList) fileList.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('[data-studio-file-delete]');
+    if (delBtn) {
+      const name = delBtn.dataset.studioFileDelete;
+      if (Object.keys(studioFiles).length <= 1) return;
+      if (!window.confirm('Delete ' + name + '? This cannot be undone.')) return;
+      delete studioFiles[name];
+      studioTabs = studioTabs.filter(t => t !== name);
+      if (studioActiveFile === name) {
+        studioActiveFile = studioTabs[0] || Object.keys(studioFiles)[0];
+        if (!studioTabs.includes(studioActiveFile)) studioTabs.push(studioActiveFile);
+      }
+      loadActiveFile();
+      return;
+    }
+    const row = e.target.closest('[data-studio-file]');
+    if (row) { switchToFile(row.dataset.studioFile); closeSidebar(); }
+  });
+
+  const closeTab = (name) => {
+    studioFiles[studioActiveFile] = inputEl.value;
+    studioTabs = studioTabs.filter(t => t !== name);
+    if (studioTabs.length === 0) {
+      const remaining = Object.keys(studioFiles).find(f => f !== name) || name;
+      studioTabs.push(remaining);
+      studioActiveFile = remaining;
+    } else if (studioActiveFile === name) {
+      studioActiveFile = studioTabs[studioTabs.length - 1];
+    }
+    loadActiveFile();
+  };
+
+  // ---- Tab bar: switch / close tabs ----
+  const tabbar = document.getElementById('studio-tabbar');
+  if (tabbar) tabbar.addEventListener('click', (e) => {
+    const closeBtn = e.target.closest('[data-studio-tab-close]');
+    if (closeBtn) {
+      e.stopPropagation();
+      closeTab(closeBtn.dataset.studioTabClose);
+      return;
+    }
+    const tab = e.target.closest('[data-studio-tab]');
+    if (tab) switchToFile(tab.dataset.studioTab);
+  });
+
+  // ---- 3-dot full menu (New file / Save / Save as / Files / Close file / … / Exit) ----
+  const moreBtn = document.getElementById('studio-more-btn');
+  const moreMenu = document.getElementById('studio-more-menu-full');
+  const menuOverlay = document.getElementById('studio-menu-overlay');
+  const consolePanel = document.getElementById('studio-console-panel');
+  const consoleClose = document.getElementById('studio-console-close');
+  const consoleClear = document.getElementById('studio-console-clear');
+  const consoleLog = document.getElementById('studio-console-log');
+
+  const closeMoreMenu = () => { moreMenu.classList.remove('open'); if (menuOverlay) menuOverlay.classList.add('hidden-menu'); };
+  const openMoreMenu = () => { moreMenu.classList.add('open'); if (menuOverlay) menuOverlay.classList.remove('hidden-menu'); };
+  if (moreBtn && moreMenu) {
+    moreBtn.addEventListener('click', (e) => { e.stopPropagation(); moreMenu.classList.contains('open') ? closeMoreMenu() : openMoreMenu(); });
+    if (menuOverlay) menuOverlay.addEventListener('click', closeMoreMenu);
+    document.addEventListener('click', (e) => {
+      if (moreMenu.classList.contains('open') && !moreMenu.contains(e.target) && e.target !== moreBtn) closeMoreMenu();
+    });
+
+    const downloadFile = (name, content) => {
+      const mime = /\.css$/i.test(name) ? 'text/css' : /\.(js|mjs)$/i.test(name) ? 'text/javascript' : 'text/html';
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    };
+
+    document.getElementById('studio-menu-new')?.addEventListener('click', () => { closeMoreMenu(); promptNewFile(); });
+    document.getElementById('studio-menu-save')?.addEventListener('click', () => {
+      closeMoreMenu();
+      studioFiles[studioActiveFile] = inputEl.value;
+      downloadFile(studioActiveFile, inputEl.value);
+      showToast('Saved ' + studioActiveFile);
+    });
+    document.getElementById('studio-menu-saveas')?.addEventListener('click', () => {
+      closeMoreMenu();
+      studioFiles[studioActiveFile] = inputEl.value;
+      const name = (window.prompt('Save as:', studioActiveFile) || '').trim();
+      if (!name) return;
+      studioFiles[name] = inputEl.value;
+      studioOpenTab(name);
+      loadActiveFile();
+      downloadFile(name, studioFiles[name]);
+      showToast('Saved as ' + name);
+    });
+    document.getElementById('studio-menu-files')?.addEventListener('click', () => { closeMoreMenu(); openSidebar(); });
+    document.getElementById('studio-menu-close')?.addEventListener('click', () => {
+      closeMoreMenu();
+      closeTab(studioActiveFile);
+    });
+    document.getElementById('studio-menu-recent')?.addEventListener('click', () => { closeMoreMenu(); openSidebar(); });
+    document.getElementById('studio-menu-find')?.addEventListener('click', () => {
+      closeMoreMenu();
+      const q = (window.prompt('Find file by name:') || '').trim().toLowerCase();
+      if (!q) return;
+      const match = Object.keys(studioFiles).find(n => n.toLowerCase().includes(q));
+      if (match) switchToFile(match); else showToast('No file matching "' + q + '"');
+    });
+    document.getElementById('studio-menu-console')?.addEventListener('click', () => { closeMoreMenu(); consolePanel.classList.remove('hidden-menu'); });
+    document.getElementById('studio-menu-terminal')?.addEventListener('click', () => { closeMoreMenu(); showToast('Terminal isn\u2019t available in the browser sandbox.'); });
+    document.getElementById('studio-menu-settings')?.addEventListener('click', () => { closeMoreMenu(); showToast('Studio settings coming soon.'); });
+    document.getElementById('studio-menu-help')?.addEventListener('click', () => { closeMoreMenu(); showToast('Tip: use <connect="file.css"> or <connect="file.js"> in your HTML to link project files.'); });
+    document.getElementById('studio-menu-exit')?.addEventListener('click', () => {
+      closeMoreMenu();
+      studioFiles[studioActiveFile] = inputEl.value;
+      exitStudioToDashboard();
+      render();
+    });
+
+    if (consoleClose && consolePanel) consoleClose.addEventListener('click', () => consolePanel.classList.add('hidden-menu'));
+    if (consoleClear && consoleLog) consoleClear.addEventListener('click', () => { consoleLog.innerHTML = '<p class="text-paper/30 italic">Run your code to see console output here.</p>'; });
+    if (consoleLog && !window.__studioConsoleWired) {
+      window.__studioConsoleWired = true;
+      window.addEventListener('message', (e) => {
+        const data = e.data;
+        if (!data || !data.__studioConsole) return;
+        const liveLog = document.getElementById('studio-console-log');
+        if (!liveLog) return;
+        if (liveLog.querySelector('.italic')) liveLog.innerHTML = '';
+        const row = document.createElement('div');
+        row.className = 'studio-console-row' + (data.type === 'error' ? ' is-error' : data.type === 'warn' ? ' is-warn' : '');
+        row.textContent = (data.args || []).join(' ');
+        liveLog.appendChild(row);
+        liveLog.scrollTop = liveLog.scrollHeight;
+      });
+    }
+  }
 }
 
 // ============================================================
@@ -3131,6 +4090,7 @@ function bindEvents() {
     });
   });
   wireHwCodeEditor();
+  wireStudioEditor();
 
   const mcqContainer = document.getElementById('hw-mcq-questions');
   if (mcqContainer) {
@@ -3409,10 +4369,12 @@ function bindEvents() {
 // INIT
 // ============================================================
 (function init() {
-  getAssignments();
-  const session = getSession();
-  currentRoute = session ? (session.role === 'admin' ? 'admin' : 'learner') : 'login';
-  render();
+  startCloudSync(() => {
+    getAssignments();
+    const session = getSession();
+    currentRoute = session ? (session.role === 'admin' ? 'admin' : 'learner') : 'login';
+    render();
+  });
 
   // PWA installability — capture the browser's install prompt so we can trigger it from our own button
   window.addEventListener('beforeinstallprompt', (e) => {
