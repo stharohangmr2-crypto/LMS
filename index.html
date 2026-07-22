@@ -15,6 +15,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+<script>
+  // Prism's default tag-name pattern (/^<\/?[^\s>\/]+/) is greedy and, when
+  // there's no space before an attribute (e.g. the editor's own
+  // <connect="file.css"> shorthand), it swallows the whole ="value" part
+  // into the tag-name token — so the string never gets its own attr-value
+  // token and shows up uncolored. Stopping the tag-name at "=" too lets
+  // Prism split off the ="value" part normally so it highlights as a string.
+  try {
+    var tagInside = window.Prism && Prism.languages.markup && Prism.languages.markup.tag && Prism.languages.markup.tag.inside;
+    if (tagInside && tagInside.tag && tagInside.tag.pattern) {
+      tagInside.tag.pattern = /^<\/?[^\s>\/=]+/;
+    }
+  } catch (err) {}
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
 <script>
@@ -193,59 +207,42 @@
      elements/ids, its own (simpler, fixed) token palette per spec, so it never
      shares state or risks the tuned student editor. Wiring lives in
      wireHwCodeEditor(). */
-  #hw-workspace-shell, #studio-shell { background: #1C1712; }
-  #hw-workspace-shell .code-gutter, #studio-shell .code-gutter { min-width: 2.5rem; }
-  #hw-workspace-shell .hw-indent-guides, #studio-shell .hw-indent-guides {
+  #hw-workspace-shell { background: #1C1712; }
+  #hw-workspace-shell .code-gutter { min-width: 2.5rem; }
+  #hw-workspace-shell .hw-indent-guides {
     position: absolute; inset: 0; pointer-events: none;
     background-repeat: repeat; background-position: 1.25rem 0;
     background-image: repeating-linear-gradient(to right,
       transparent 0, transparent calc(2ch - 1px),
       rgba(241,235,218,0.09) calc(2ch - 1px), rgba(241,235,218,0.09) calc(2ch));
   }
-  /* fixed, simple token palette (not the per-tag rainbow used elsewhere) — shared
-     by the Homework starter-code editor and the standalone HTML Studio */
-  #hw-workspace-shell .token.punctuation, #hw-workspace-shell .token.attr-equals,
-  #studio-shell .token.punctuation, #studio-shell .token.attr-equals { color: #7EC9E8; } /* < > / ; { } ( ) = -> light blue */
+  /* fixed, simple token palette (not the per-tag rainbow used elsewhere) —
+     used by the Homework starter-code editor */
+  #hw-workspace-shell .token.punctuation, #hw-workspace-shell .token.attr-equals { color: #7EC9E8; } /* < > / ; { } ( ) = -> light blue */
   #hw-workspace-shell .token.tag, #hw-workspace-shell .token.class-name,
-  #hw-workspace-shell .token.maybe-class-name, #hw-workspace-shell .token.selector,
-  #studio-shell .token.tag, #studio-shell .token.class-name,
-  #studio-shell .token.maybe-class-name, #studio-shell .token.selector { color: #5FC2AE; } /* tag / element names -> green-blue mix */
-  #hw-workspace-shell .token.number, #hw-workspace-shell .token.boolean,
-  #studio-shell .token.number, #studio-shell .token.boolean { color: #D9487E; } /* numbers -> dark pink */
+  #hw-workspace-shell .token.maybe-class-name, #hw-workspace-shell .token.selector { color: #5FC2AE; } /* tag / element names -> green-blue mix */
+  #hw-workspace-shell .token.number, #hw-workspace-shell .token.boolean { color: #D9487E; } /* numbers -> dark pink */
   #hw-workspace-shell .token.string, #hw-workspace-shell .token.char,
-  #hw-workspace-shell .token.attr-value,
-  #studio-shell .token.string, #studio-shell .token.char,
-  #studio-shell .token.attr-value { color: #4A9A62; } /* strings / attr values -> dark green */
-  #hw-workspace-shell .token.attr-value .token.punctuation,
-  #studio-shell .token.attr-value .token.punctuation { color: #4A9A62; } /* quotes stay green, incl. the marks themselves */
-  #hw-workspace-shell .token.attr-value .token.attr-equals,
-  #studio-shell .token.attr-value .token.attr-equals { color: #7EC9E8; } /* but the "=" itself stays light blue */
+  #hw-workspace-shell .token.attr-value { color: #4A9A62; } /* strings / attr values -> dark green */
+  #hw-workspace-shell .token.attr-value .token.punctuation { color: #4A9A62; } /* quotes stay green, incl. the marks themselves */
+  #hw-workspace-shell .token.attr-value .token.attr-equals { color: #7EC9E8; } /* but the "=" itself stays light blue */
   #hw-workspace-shell .token.attr-name, #hw-workspace-shell .token.property,
-  #hw-workspace-shell .token.keyword, #hw-workspace-shell .token.function,
-  #studio-shell .token.attr-name, #studio-shell .token.property,
-  #studio-shell .token.keyword, #studio-shell .token.function { color: #D9A441; }
-  #hw-workspace-shell .token.comment, #studio-shell .token.comment { color: rgba(241,235,218,0.32); font-style: italic; } /* comments -> faded/transparent */
-  #hw-workspace-shell .token.entity, #hw-workspace-shell .token.doctype,
-  #studio-shell .token.entity, #studio-shell .token.doctype { color: rgba(241,235,218,0.5); }
+  #hw-workspace-shell .token.keyword, #hw-workspace-shell .token.function { color: #D9A441; }
+  #hw-workspace-shell .token.comment { color: rgba(241,235,218,0.32); font-style: italic; } /* comments -> faded/transparent */
+  #hw-workspace-shell .token.entity, #hw-workspace-shell .token.doctype { color: rgba(241,235,218,0.5); }
   #hw-workspace-shell .token.operator, #hw-workspace-shell .token.url,
-  #hw-workspace-shell .token.regex, #hw-workspace-shell .token.variable,
-  #studio-shell .token.operator, #studio-shell .token.url,
-  #studio-shell .token.regex, #studio-shell .token.variable { color: rgba(241,235,218,0.7); }
+  #hw-workspace-shell .token.regex, #hw-workspace-shell .token.variable { color: rgba(241,235,218,0.7); }
 
-  /* ---- HTML Studio — standalone full-page editor, own header/toolbar chrome ---- */
-  #studio-shell { display: flex; flex-direction: column; }
-  #studio-more-menu.hidden-menu, #studio-console-panel.hidden-menu { display: none; }
-  #studio-more-menu { display: flex; }
-  #studio-console-panel { max-height: 40vh; }
-  .studio-console-row { border-bottom: 1px dashed rgba(241,235,218,0.1); padding: 5px 0; word-break: break-word; }
-  .studio-console-row.is-error { color: #E8899E; }
-  .studio-console-row.is-warn { color: #D9A441; }
+  /* ---- Code Studio — full-screen iframe embed (code-studio.html) ---- */
+  #studio-fullscreen { position: fixed; inset: 0; height: 100vh; height: 100dvh; z-index: 200; background: #0e1014; display: flex; flex-direction: column; }
+  #code-studio-frame { flex: 1; width: 100%; height: 100%; border: 0; display: block; }
+
 </style>
 </head>
 <body class="min-h-screen text-ink antialiased">
 
 <div id="app" class="relative"></div>
-<div id="toast-root" class="fixed bottom-8 left-1/2 z-[100]"></div>
+<div id="toast-root" class="fixed bottom-8 left-1/2 z-[300]"></div>
 
 <script>
 /* ============================================================
@@ -292,7 +289,14 @@ const ICONS = {
   undo2: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.4 2.6L3 13"/>',
   redo2: '<path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6.4 2.6L21 13"/>',
   terminal: '<polyline points="4,7 10,12 4,17"/><line x1="12" y1="17" x2="20" y2="17"/>',
-  download: '<path d="M12 3v12"/><polyline points="7,10 12,15 17,10"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'
+  download: '<path d="M12 3v12"/><polyline points="7,10 12,15 17,10"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+  save: '<path d="M5 3h11l4 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/>',
+  folder: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  settingsGear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15 1.7 1.7 0 0 0 3.1 14H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64 1.7 1.7 0 0 0 10 3.1V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9c.16.38.52.64.94.74a1.7 1.7 0 0 0 .7.16h.09a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.6 1z"/>',
+  helpCircle: '<circle cx="12" cy="12" r="9.5"/><path d="M9.2 9.2a2.8 2.8 0 1 1 4.6 2.1c-.7.6-1.5 1-1.5 2.2"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3,4 3,9 8,9"/><polyline points="12,7 12,12 16,14"/>',
+  plusSmall: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  trash2: '<polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
 };
 function ic(name, cls) {
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="' + (cls || '') + '">' + (ICONS[name] || '') + '</svg>';
@@ -613,7 +617,6 @@ window.addEventListener('popstate', () => {
 });
 let adminNav = 'dashboard';
 let learnerNav = 'dashboard';
-let studioCode = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>My Page</title>\n  <style>\n\n  </style>\n</head>\n<body>\n\n  <scr' + 'ipt>\n\n  </scr' + 'ipt>\n</body>\n</html>';
 let bannerDismissed = false;
 let editingAssignmentId = null; // assignment being edited in the Create/Edit form
 let deferredInstallPrompt = null; // captured beforeinstallprompt event, for the "Install App" button
@@ -822,7 +825,8 @@ function renderSidebar(role, activeNav, userName, session) {
       { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
       { id: 'create', label: 'Create Homework', icon: 'pencil' },
       { id: 'tasks', label: 'Published Tasks', icon: 'listChecks', badge: pendingReview, badgeDot: pendingReview > 0 },
-      { id: 'students', label: 'Students', icon: 'users', badge: unreadMsgs, badgeDot: unreadMsgs > 0 }
+      { id: 'students', label: 'Students', icon: 'users', badge: unreadMsgs, badgeDot: unreadMsgs > 0 },
+      { id: 'studio', label: 'Code Studio', icon: 'code' }
     ];
   } else {
     const studentId = session?.id;
@@ -832,7 +836,7 @@ function renderSidebar(role, activeNav, userName, session) {
     navItems = [
       { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
       { id: 'homework', label: 'Homework', icon: 'pencil', badge: homeworkBadge, badgeDot: progress.revision > 0 },
-      { id: 'studio', label: 'HTML Studio', icon: 'code' },
+      { id: 'studio', label: 'Code Studio', icon: 'code' },
       { id: 'notification', label: 'Notification', icon: 'chat', badge: unread, badgeDot: unread > 0 }
     ];
   }
@@ -932,6 +936,7 @@ function renderAdmin() {
           ${adminNav === 'create' ? renderAdminCreate(session)
             : adminNav === 'tasks' ? renderAdminTasks(session)
             : adminNav === 'students' ? renderAdminStudents(session)
+            : adminNav === 'studio' ? renderCodeStudioEmbed(session)
             : renderAdminDashboard(session)}
         </div>
       </main>
@@ -1678,7 +1683,7 @@ function renderLearner() {
           ` : ''}
 
           ${learnerNav === 'homework' ? renderLearnerHomework(session)
-            : learnerNav === 'studio' ? renderLearnerStudio(session)
+            : learnerNav === 'studio' ? renderCodeStudioEmbed(session)
             : learnerNav === 'notification' ? renderLearnerNotification(session)
             : renderLearnerDashboard(session)}
 
@@ -1826,463 +1831,27 @@ function renderLearnerNotification(session) {
   `;
 }
 
-// ---------- HTML STUDIO — standalone free-form editor, not tied to homework ----------
-function renderLearnerStudio(session) {
+// ---------- CODE STUDIO — full-screen embed of the standalone code-studio.html app ----------
+function renderCodeStudioEmbed(session) {
   return `
-  <div class="mb-6 anim-fade-up stagger-1">
-    <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink tracking-tight">HTML Studio</h1>
-    <p class="text-graphite text-sm mt-1.5">A free-form code editor to sketch and test HTML, CSS &amp; JS. Nothing here is graded or saved to your homework.</p>
-  </div>
-
-  <div id="studio-shell" class="anim-fade-up stagger-2 rounded-2xl overflow-hidden border border-ink/10 shadow-md shadow-black/10" style="height: calc(100vh - 260px); min-height: 420px;">
-    <div class="flex items-center gap-2.5 px-3.5 py-2.5 bg-[#241D16] border-b border-paper/10 shrink-0 relative">
-      <button id="studio-run-btn" title="Run" class="btn-press w-8 h-8 rounded-full bg-moss/20 text-moss flex items-center justify-center shrink-0">
-        ${ic('play', 'w-4 h-4')}
-      </button>
-      <div class="min-w-0 flex-1">
-        <p class="text-paper/90 text-xs font-semibold truncate leading-tight">HTML Studio</p>
-        <p id="studio-filename" class="text-paper/40 text-[10px] font-mono2 leading-tight">untitled.html</p>
-      </div>
-      <span class="shrink-0 text-paper/45 text-[9px] font-mono2 uppercase tracking-widest border border-paper/15 rounded-full px-2 py-1">html</span>
-      <div class="relative shrink-0">
-        <button id="studio-more-btn" title="More" class="w-8 h-8 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/70">
-          ${ic('moreVertical', 'w-4 h-4')}
-        </button>
-        <div id="studio-more-menu" class="hidden-menu absolute right-0 top-10 z-[80] w-52 p-1.5 rounded-2xl bg-papercard border border-ink/10 shadow-xl shadow-black/15 flex-col gap-1">
-          <button type="button" id="studio-save-file" class="btn-press w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-ink/5 transition-colors">
-            ${ic('download', 'w-4 h-4 text-graphite')} Save to File
-          </button>
-          <button type="button" id="studio-open-browser" class="btn-press w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-ink/5 transition-colors">
-            ${ic('externalLink', 'w-4 h-4 text-graphite')} Open in Browser
-          </button>
-          <button type="button" id="studio-console-btn" class="btn-press w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-ink/5 transition-colors">
-            ${ic('terminal', 'w-4 h-4 text-graphite')} Console
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="relative flex-1 min-h-0">
-      <div class="absolute inset-0 flex overflow-hidden">
-        <div id="studio-code-gutter" class="code-gutter shrink-0"><div>1</div></div>
-        <div class="relative flex-1 min-w-0">
-          <div class="hw-indent-guides"></div>
-          <pre id="studio-code-highlight" class="code-highlight-pre" aria-hidden="true"><code id="studio-code-highlight-code" class="language-markup"></code></pre>
-          <textarea id="studio-code-input" spellcheck="false" autocapitalize="off" autocorrect="off" wrap="off"
-            class="code-editor-input" placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;&#10;&#10;&lt;/html&gt;">${escapeHtml(studioCode)}</textarea>
-        </div>
-      </div>
-
-      <div id="studio-console-panel" class="hidden-menu absolute inset-x-0 bottom-0 z-20 bg-ink/98 border-t border-paper/15 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-3.5 py-2 border-b border-paper/10 shrink-0">
-          <span class="text-[10px] font-mono2 uppercase tracking-widest text-paper/50">Console</span>
-          <div class="flex items-center gap-1">
-            <button type="button" id="studio-console-clear" class="text-[10px] font-mono2 uppercase tracking-wide text-paper/50 hover:text-paper px-2 py-1">Clear</button>
-            <button type="button" id="studio-console-close" class="w-6 h-6 rounded-full hover:bg-paper/10 flex items-center justify-center text-paper/60">${ic('x', 'w-3.5 h-3.5')}</button>
-          </div>
-        </div>
-        <div id="studio-console-log" class="flex-1 overflow-y-auto px-3.5 py-2 font-mono2 text-[11px] text-paper/80">
-          <p class="text-paper/30 italic">Run your code to see console output here.</p>
-        </div>
-      </div>
-    </div>
-
-    <div id="studio-code-toolbar" class="bg-ink border-t border-paper/15 px-2 pt-2.5 pb-2.5 shrink-0">
-      <div class="flex items-center gap-2 pb-2.5 mb-2.5 border-b border-paper/10">
-        <button type="button" id="studio-mck-tab" class="mck-key shrink-0 px-4 h-10 rounded-xl bg-paper/15 text-paper text-xs font-mono2 font-semibold tracking-wide">TAB</button>
-        <div class="mck-row-scroll flex items-center gap-2 overflow-x-auto">
-          ${['{','}','[',']','(',')','<','>',';',"'",'"','/','\\','_','-','=','+','#','.',',','%'].map(ch => `<button type="button" data-studiomck-ins="${ch === '"' ? '&quot;' : ch}" class="mck-key shrink-0 w-10 h-10 rounded-xl bg-paper/10 text-paper text-base font-mono2 flex items-center justify-center">${escapeHtml(ch)}</button>`).join('')}
-        </div>
-      </div>
-      <div class="mck-row-scroll flex items-center gap-2 overflow-x-auto">
-        <button type="button" id="studio-mck-ctrl" class="mck-key mck-mod shrink-0 px-3 h-9 rounded-xl bg-paper/10 text-paper text-[11px] font-mono2 font-semibold tracking-wide">CTRL</button>
-        <button type="button" id="studio-mck-shift" class="mck-key mck-mod shrink-0 px-3 h-9 rounded-xl bg-paper/10 text-paper text-[11px] font-mono2 font-semibold tracking-wide">SHFT</button>
-        <button type="button" id="studio-mck-undo" title="Undo" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('undo2', 'w-4 h-4')}</button>
-        <button type="button" id="studio-mck-redo" title="Redo" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('redo2', 'w-4 h-4')}</button>
-        <button type="button" id="studio-mck-search" title="Find" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper flex items-center justify-center">${ic('search', 'w-3.5 h-3.5')}</button>
-        <span class="w-1 shrink-0"></span>
-        <button type="button" data-studiomck-move="home" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-sm font-mono2 flex items-center justify-center">⇤</button>
-        <button type="button" data-studiomck-move="left" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">←</button>
-        <button type="button" data-studiomck-move="up" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">↑</button>
-        <button type="button" data-studiomck-move="down" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">↓</button>
-        <button type="button" data-studiomck-move="right" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-lg flex items-center justify-center">→</button>
-        <button type="button" data-studiomck-move="end" class="mck-key shrink-0 w-9 h-9 rounded-xl bg-paper/10 text-paper text-sm font-mono2 flex items-center justify-center">⇥</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="studio-preview-overlay" class="hidden fixed inset-0 z-[95] bg-white flex flex-col">
-    <div class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-ink/10 bg-papercard shrink-0">
-      <span class="text-sm font-semibold text-ink flex items-center gap-2">${ic('eyePreview', 'w-4 h-4 text-graphite')} Preview</span>
-      <button id="studio-preview-close" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite">${ic('x', 'w-5 h-5')}</button>
-    </div>
-    <iframe id="studio-preview-frame" class="flex-1 w-full border-0" sandbox="allow-scripts allow-modals allow-forms allow-popups"></iframe>
+  <div id="studio-fullscreen">
+    <iframe id="code-studio-frame" src="code-studio.html" title="Code Studio"></iframe>
   </div>
   `;
 }
 
-function buildStudioConsoleShim() {
-  return `<script>(function(){
-    function send(type, args){
-      try {
-        window.parent.postMessage({ __studioConsole: true, type: type, args: args.map(function(a){
-          try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
-        }) }, '*');
-      } catch (e) {}
-    }
-    ['log','warn','error','info'].forEach(function(m){
-      var orig = console[m];
-      console[m] = function(){ send(m, Array.prototype.slice.call(arguments)); try { orig && orig.apply(console, arguments); } catch (e) {} };
-    });
-    window.addEventListener('error', function(e){ send('error', [(e.message || 'Script error') + ' (line ' + (e.lineno || '?') + ')']); });
-  })();</scr` + `ipt>`;
-}
-
-function wireStudioEditor() {
-  const inputEl = document.getElementById('studio-code-input');
-  const gutterEl = document.getElementById('studio-code-gutter');
-  const highlightPreEl = document.getElementById('studio-code-highlight');
-  const highlightCodeEl = document.getElementById('studio-code-highlight-code');
-  const toolbarEl = document.getElementById('studio-code-toolbar');
-  if (!inputEl || !gutterEl || !highlightPreEl || !highlightCodeEl) return;
-
-  const HEAVY_DOC_CHARS = 20000;
-  const MAX_GUTTER_LINES = 4000;
-  const VOID_TAGS = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
-  const fireInput = () => inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-
-  const updateGutter = () => {
-    try {
-      const lines = inputEl.value.split('\n').length;
-      if (gutterEl.dataset.lines != lines) {
-        gutterEl.dataset.lines = lines;
-        const cap = Math.min(lines, MAX_GUTTER_LINES);
-        let html = '';
-        for (let i = 1; i <= cap; i++) html += `<div>${i}</div>`;
-        gutterEl.innerHTML = html;
-      }
-    } catch (err) {}
-  };
-  const setRawOverlayText = () => { try { highlightCodeEl.textContent = inputEl.value; } catch (err) {} };
-  const runHighlight = () => {
-    try {
-      const lang = prismLangFor('html');
-      highlightCodeEl.className = 'language-' + lang;
-      if (inputEl.value.length <= HEAVY_DOC_CHARS && window.Prism && Prism.languages[lang]) {
-        Prism.highlightElement(highlightCodeEl);
-      }
-    } catch (err) {}
-  };
-
-  let syncRaf = null, highlightTimer = null, isComposing = false;
-  const syncVisuals = () => {
-    if (isComposing) return;
-    setRawOverlayText();
-    if (syncRaf) cancelAnimationFrame(syncRaf);
-    syncRaf = requestAnimationFrame(() => { syncRaf = null; updateGutter(); });
-    clearTimeout(highlightTimer);
-    highlightTimer = setTimeout(runHighlight, 60);
-  };
-  updateGutter(); setRawOverlayText(); runHighlight();
-
-  inputEl.addEventListener('input', () => { studioCode = inputEl.value; syncVisuals(); });
-  inputEl.addEventListener('scroll', () => {
-    highlightPreEl.scrollTop = inputEl.scrollTop;
-    highlightPreEl.scrollLeft = inputEl.scrollLeft;
-    gutterEl.scrollTop = inputEl.scrollTop;
+// The embedded code-studio.html posts a message when its Exit button is used;
+// catch it here and drop the user back on the dashboard. Wired once, globally,
+// since renderCodeStudioEmbed() can be invoked many times across re-renders.
+if (!window.__codeStudioExitWired) {
+  window.__codeStudioExitWired = true;
+  window.addEventListener('message', (e) => {
+    const data = e.data;
+    if (!data || data.__codeStudioExit !== true) return;
+    const session = getSession();
+    if (session?.role === 'admin') adminNav = 'dashboard'; else learnerNav = 'dashboard';
+    render();
   });
-
-  const ensureCaretVisible = () => {
-    if (document.activeElement !== inputEl || isComposing) return;
-    const style = getComputedStyle(inputEl);
-    const lineHeight = parseFloat(style.lineHeight) || 20;
-    const paddingTop = parseFloat(style.paddingTop) || 0;
-    const paddingBottom = parseFloat(style.paddingBottom) || 0;
-    const caretLine = inputEl.value.slice(0, inputEl.selectionEnd).split('\n').length;
-    const caretTop = paddingTop + (caretLine - 1) * lineHeight;
-    const caretBottom = caretTop + lineHeight;
-    const visibleTop = inputEl.scrollTop;
-    const visibleBottom = visibleTop + inputEl.clientHeight - paddingBottom;
-    if (caretTop < visibleTop) inputEl.scrollTop = caretTop;
-    else if (caretBottom > visibleBottom) inputEl.scrollTop = caretBottom - inputEl.clientHeight + paddingBottom;
-  };
-  inputEl.addEventListener('input', ensureCaretVisible);
-  inputEl.addEventListener('keyup', (e) => {
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Enter'].includes(e.key)) ensureCaretVisible();
-  });
-  inputEl.addEventListener('click', ensureCaretVisible);
-  inputEl.addEventListener('focus', () => setTimeout(ensureCaretVisible, 50));
-
-  inputEl.addEventListener('compositionstart', () => {
-    isComposing = true;
-    inputEl.classList.add('is-composing');
-    highlightPreEl.classList.add('is-hidden-composing');
-  });
-  inputEl.addEventListener('compositionend', () => {
-    isComposing = false;
-    inputEl.classList.remove('is-composing');
-    highlightPreEl.classList.remove('is-hidden-composing');
-    studioCode = inputEl.value;
-    syncVisuals();
-    ensureCaretVisible();
-  });
-
-  // TAB to indent; smart Enter steps inside an opening tag/brace and drops
-  // the matching close onto its own line, mirroring the Homework editor.
-  inputEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
-      inputEl.value = inputEl.value.slice(0, start) + '  ' + inputEl.value.slice(end);
-      inputEl.selectionStart = inputEl.selectionEnd = start + 2;
-      studioCode = inputEl.value;
-      fireInput();
-      return;
-    }
-    if (e.key === 'Enter') {
-      const val = inputEl.value;
-      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
-      if (start !== end) return;
-      e.preventDefault();
-      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-      const beforeCursor = val.slice(lineStart, start);
-      const baseIndent = (beforeCursor.match(/^[ \t]*/) || [''])[0];
-      const trimmed = beforeCursor.trim();
-
-      const tagMatch = trimmed.match(/<\/?([a-zA-Z][a-zA-Z0-9-]*)[^<>]*?(\/)?>$/);
-      const opensTag = !!(tagMatch && !trimmed.slice(trimmed.lastIndexOf('<')).startsWith('</') && !tagMatch[2] && !VOID_TAGS.has(tagMatch[1].toLowerCase()));
-      const opensBrace = /[{(\[]$/.test(trimmed);
-
-      const after = val.slice(start);
-      let stepsInside = false;
-      if (opensTag) stepsInside = new RegExp('^\\s*</' + tagMatch[1] + '\\s*>').test(after);
-      else if (opensBrace) {
-        const closerFor = { '{': '}', '(': ')', '[': ']' };
-        stepsInside = new RegExp('^\\s*\\' + closerFor[trimmed.slice(-1)]).test(after);
-      }
-
-      let insert, caretOffset;
-      if ((opensTag || opensBrace) && stepsInside) {
-        const inner = baseIndent + '  ';
-        insert = '\n' + inner + '\n' + baseIndent;
-        caretOffset = 1 + inner.length;
-      } else if (opensTag || opensBrace) {
-        insert = '\n' + baseIndent + '  ';
-        caretOffset = insert.length;
-      } else {
-        insert = '\n' + baseIndent;
-        caretOffset = insert.length;
-      }
-      inputEl.value = val.slice(0, start) + insert + val.slice(end);
-      inputEl.selectionStart = inputEl.selectionEnd = start + caretOffset;
-      studioCode = inputEl.value;
-      fireInput();
-      ensureCaretVisible();
-    }
-  });
-
-  // ---- Bottom toolbar: TAB / symbols / CTRL / SHIFT / arrows / undo / redo / find ----
-  if (toolbarEl) {
-    let stCtrl = false, stShift = false;
-    const ctrlBtn = document.getElementById('studio-mck-ctrl');
-    const shiftBtn = document.getElementById('studio-mck-shift');
-    const tabBtn = document.getElementById('studio-mck-tab');
-    const undoBtn = document.getElementById('studio-mck-undo');
-    const redoBtn = document.getElementById('studio-mck-redo');
-    const searchBtn = document.getElementById('studio-mck-search');
-    const setCtrl = (v) => { stCtrl = v; ctrlBtn.classList.toggle('active', v); };
-    const setShift = (v) => { stShift = v; shiftBtn.classList.toggle('active', v); };
-
-    const insertAtCursor = (text, cursorOffset) => {
-      const start = inputEl.selectionStart, end = inputEl.selectionEnd;
-      inputEl.value = inputEl.value.slice(0, start) + text + inputEl.value.slice(end);
-      inputEl.selectionStart = inputEl.selectionEnd = start + (cursorOffset !== undefined ? cursorOffset : text.length);
-      studioCode = inputEl.value;
-      fireInput();
-    };
-    const PAIR_OPEN = { '{': '}', '[': ']', '(': ')', '<': '>', '"': '"', "'": "'" };
-    const PAIR_CLOSE_OF = { '}': '{', ']': '[', ')': '(', '>': '<' };
-
-    toolbarEl.querySelectorAll('.mck-key').forEach(btn => btn.addEventListener('pointerdown', (e) => e.preventDefault()));
-    toolbarEl.querySelectorAll('[data-studiomck-ins]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        inputEl.focus();
-        const ch = btn.dataset.studiomckIns;
-        const start = inputEl.selectionStart, end = inputEl.selectionEnd;
-        if (PAIR_OPEN[ch] && start === end) insertAtCursor(ch + PAIR_OPEN[ch], 1);
-        else if (PAIR_CLOSE_OF[ch] && start === end && inputEl.value[start] === ch) inputEl.selectionStart = inputEl.selectionEnd = start + 1;
-        else insertAtCursor(ch);
-      });
-    });
-    tabBtn.addEventListener('click', () => { inputEl.focus(); insertAtCursor('  '); });
-    ctrlBtn.addEventListener('click', () => { inputEl.focus(); setCtrl(!stCtrl); });
-    shiftBtn.addEventListener('click', () => { inputEl.focus(); setShift(!stShift); });
-    undoBtn.addEventListener('click', () => { inputEl.focus(); try { document.execCommand('undo'); } catch (err) {} studioCode = inputEl.value; syncVisuals(); });
-    redoBtn.addEventListener('click', () => { inputEl.focus(); try { document.execCommand('redo'); } catch (err) {} studioCode = inputEl.value; syncVisuals(); });
-    searchBtn.addEventListener('click', () => {
-      const q = window.prompt('Find in editor:');
-      if (!q) return;
-      let idx = inputEl.value.indexOf(q, inputEl.selectionEnd || 0);
-      if (idx === -1) idx = inputEl.value.indexOf(q);
-      if (idx === -1) { showToast('Not found: ' + q); return; }
-      inputEl.focus();
-      inputEl.setSelectionRange(idx, idx + q.length);
-      ensureCaretVisible();
-    });
-
-    const runCtrlShortcut = (key) => {
-      const k = key.toLowerCase();
-      if (k === 'a') inputEl.select();
-      else if (k === 'c') {
-        const sel = inputEl.value.slice(inputEl.selectionStart, inputEl.selectionEnd);
-        if (sel && navigator.clipboard) navigator.clipboard.writeText(sel).catch(() => {});
-      } else if (k === 'x') {
-        const s = inputEl.selectionStart, e2 = inputEl.selectionEnd;
-        const sel = inputEl.value.slice(s, e2);
-        if (sel) {
-          if (navigator.clipboard) navigator.clipboard.writeText(sel).catch(() => {});
-          inputEl.value = inputEl.value.slice(0, s) + inputEl.value.slice(e2);
-          inputEl.selectionStart = inputEl.selectionEnd = s;
-          studioCode = inputEl.value;
-          fireInput();
-        }
-      } else if (k === 'v') {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          navigator.clipboard.readText().then(text => { if (text) insertAtCursor(text); }).catch(() => showToast('Long-press the editor to paste.'));
-        } else showToast('Long-press the editor to paste.');
-      } else if (k === 'z') { try { document.execCommand('undo'); } catch (err) {} }
-      else if (k === 'y') { try { document.execCommand('redo'); } catch (err) {} }
-    };
-
-    toolbarEl.querySelectorAll('[data-studiomck-move]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        inputEl.focus();
-        const move = btn.dataset.studiomckMove;
-        const val = inputEl.value;
-        const anchor = stShift ? (inputEl.selectionDirection === 'backward' ? inputEl.selectionEnd : inputEl.selectionStart) : null;
-        let pos = stShift ? (inputEl.selectionDirection === 'backward' ? inputEl.selectionStart : inputEl.selectionEnd) : inputEl.selectionStart;
-        if (move === 'home') pos = val.lastIndexOf('\n', pos - 1) + 1;
-        else if (move === 'end') { const l = val.indexOf('\n', pos); pos = l === -1 ? val.length : l; }
-        else if (move === 'left') pos = Math.max(0, pos - 1);
-        else if (move === 'right') pos = Math.min(val.length, pos + 1);
-        else if (move === 'up' || move === 'down') {
-          const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
-          const col = pos - lineStart;
-          if (move === 'up') {
-            if (lineStart === 0) pos = 0;
-            else {
-              const prevLineStart = val.lastIndexOf('\n', lineStart - 2) + 1;
-              pos = prevLineStart + Math.min(col, lineStart - 1 - prevLineStart);
-            }
-          } else {
-            const lineEnd = val.indexOf('\n', pos);
-            if (lineEnd === -1) pos = val.length;
-            else {
-              const nextStart = lineEnd + 1;
-              let nextEnd = val.indexOf('\n', nextStart);
-              if (nextEnd === -1) nextEnd = val.length;
-              pos = nextStart + Math.min(col, nextEnd - nextStart);
-            }
-          }
-        }
-        if (stShift && anchor !== null) {
-          const dir = pos < anchor ? 'backward' : 'forward';
-          inputEl.setSelectionRange(Math.min(anchor, pos), Math.max(anchor, pos), dir);
-        } else {
-          inputEl.setSelectionRange(pos, pos);
-        }
-        inputEl.focus();
-        ensureCaretVisible();
-        if (stCtrl) setCtrl(false);
-      });
-    });
-
-    inputEl.addEventListener('beforeinput', (e) => {
-      if (!stCtrl) return;
-      if (e.inputType === 'insertText' && e.data && e.data.length === 1) {
-        e.preventDefault();
-        runCtrlShortcut(e.data);
-        if (e.data.toLowerCase() !== 'a') setCtrl(false);
-      }
-    });
-    inputEl.addEventListener('keydown', (e) => {
-      if (stCtrl && e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
-        e.preventDefault();
-        runCtrlShortcut(e.key);
-        if (e.key.toLowerCase() !== 'a') setCtrl(false);
-      }
-    });
-  }
-
-  // ---- Header: run / more menu (save, open in browser, console) ----
-  const runBtn = document.getElementById('studio-run-btn');
-  const previewOverlay = document.getElementById('studio-preview-overlay');
-  const previewFrame = document.getElementById('studio-preview-frame');
-  const previewClose = document.getElementById('studio-preview-close');
-  if (runBtn && previewOverlay && previewFrame) {
-    runBtn.addEventListener('click', () => {
-      const doc = buildStudioConsoleShim() + inputEl.value;
-      previewFrame.srcdoc = doc;
-      previewOverlay.classList.remove('hidden');
-    });
-    if (previewClose) previewClose.addEventListener('click', () => previewOverlay.classList.add('hidden'));
-  }
-
-  const moreBtn = document.getElementById('studio-more-btn');
-  const moreMenu = document.getElementById('studio-more-menu');
-  if (moreBtn && moreMenu) {
-    const closeMoreMenu = () => moreMenu.classList.add('hidden-menu');
-    moreBtn.addEventListener('click', (e) => { e.stopPropagation(); moreMenu.classList.toggle('hidden-menu'); });
-    document.addEventListener('click', (e) => {
-      if (!moreMenu.classList.contains('hidden-menu') && !moreMenu.contains(e.target) && e.target !== moreBtn) closeMoreMenu();
-    });
-
-    const saveBtn = document.getElementById('studio-save-file');
-    if (saveBtn) saveBtn.addEventListener('click', () => {
-      closeMoreMenu();
-      const blob = new Blob([inputEl.value], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'untitled.html';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      showToast('Saved untitled.html');
-    });
-
-    const openBrowserBtn = document.getElementById('studio-open-browser');
-    if (openBrowserBtn) openBrowserBtn.addEventListener('click', () => {
-      closeMoreMenu();
-      const blob = new Blob([inputEl.value], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url, '_blank');
-      if (!win) showToast('Allow pop-ups to open this in your browser.');
-      else setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
-
-    const consoleBtn = document.getElementById('studio-console-btn');
-    const consolePanel = document.getElementById('studio-console-panel');
-    const consoleClose = document.getElementById('studio-console-close');
-    const consoleClear = document.getElementById('studio-console-clear');
-    const consoleLog = document.getElementById('studio-console-log');
-    if (consoleBtn && consolePanel) consoleBtn.addEventListener('click', () => { closeMoreMenu(); consolePanel.classList.remove('hidden-menu'); });
-    if (consoleClose && consolePanel) consoleClose.addEventListener('click', () => consolePanel.classList.add('hidden-menu'));
-    if (consoleClear && consoleLog) consoleClear.addEventListener('click', () => { consoleLog.innerHTML = '<p class="text-paper/30 italic">Run your code to see console output here.</p>'; });
-    if (consoleLog && !window.__studioConsoleWired) {
-      window.__studioConsoleWired = true;
-      window.addEventListener('message', (e) => {
-        const data = e.data;
-        if (!data || !data.__studioConsole) return;
-        const liveLog = document.getElementById('studio-console-log');
-        if (!liveLog) return;
-        if (liveLog.querySelector('.italic')) liveLog.innerHTML = '';
-        const row = document.createElement('div');
-        row.className = 'studio-console-row' + (data.type === 'error' ? ' is-error' : data.type === 'warn' ? ' is-warn' : '');
-        row.textContent = (data.args || []).join(' ');
-        liveLog.appendChild(row);
-        liveLog.scrollTop = liveLog.scrollHeight;
-      });
-    }
-  }
 }
 
 // ============================================================
@@ -3562,7 +3131,6 @@ function bindEvents() {
     });
   });
   wireHwCodeEditor();
-  wireStudioEditor();
 
   const mcqContainer = document.getElementById('hw-mcq-questions');
   if (mcqContainer) {
