@@ -765,7 +765,7 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if(raw){
         var data = JSON.parse(raw);
-        if(data && data.files && Object.keys(data.files).length){
+        if(data && data.files){
           files = data.files;
           openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
           activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
@@ -1106,15 +1106,40 @@
     return 'untitled(' + n + ').txt';
   }
 
+  // Splits "notes.html" into { base: "notes", ext: ".html" }. A leading dot
+  // (dotfiles like ".gitignore") is treated as part of the base name, not
+  // as the extension.
+  function splitNameExt(name){
+    var idx = name.lastIndexOf('.');
+    if(idx <= 0) return { base: name, ext: '' };
+    return { base: name.slice(0, idx), ext: name.slice(idx) };
+  }
+
+  // If `name` is free, returns it unchanged. If it's taken, finds the next
+  // free "name (2).ext", "name (3).ext"... variant instead - so a name
+  // collision never blocks the action and never wipes out the file that
+  // was already there.
+  function uniqueFileName(name){
+    if(!files[name]) return name;
+    var parts = splitNameExt(name);
+    var n = 2;
+    var candidate;
+    do {
+      candidate = parts.base + ' (' + n + ')' + parts.ext;
+      n++;
+    } while(files[candidate]);
+    return candidate;
+  }
+
   function createFile(name, type){
-    if(files[name]){ showToast('A file named "' + name + '" already exists'); return false; }
+    name = uniqueFileName(name);
     files[name] = { content: defaultTemplate(type), type: type, dirty: false, saved: false };
-    openTabs.push(name);
+    if(openTabs.indexOf(name) === -1) openTabs.push(name);
     activeFile = name;
     touchRecent(name);
     renderAll();
     persist();
-    return true;
+    return name;
   }
 
   // Pushes a file out to the phone's real storage (Downloads folder, or
@@ -1151,9 +1176,9 @@
   function saveAs(newName){
     var f = files[activeFile];
     if(!f) return;
-    if(files[newName]){ showToast('A file named "' + newName + '" already exists'); return; }
+    newName = uniqueFileName(newName);
     files[newName] = { content: f.content, type: extType(newName), dirty: false, saved: true };
-    openTabs.push(newName);
+    if(openTabs.indexOf(newName) === -1) openTabs.push(newName);
     activeFile = newName;
     touchRecent(newName);
     renderAll();
@@ -1177,7 +1202,9 @@
     var f = files[old];
     if(!f) return;
     if(newName === old) return;
-    if(files[newName]){ showToast('A file named "' + newName + '" already exists'); return; }
+    // If that name's already taken, use the next free variant instead of
+    // overwriting the file that's already there.
+    newName = uniqueFileName(newName);
     files[newName] = f;
     f.type = extType(newName);
     delete files[old];
@@ -1310,9 +1337,8 @@
   }
 
   function createNewUntitledFile(){
-    var name = nextUntitledName();
-    var ok = createFile(name, extType(name));
-    if(ok) showToast('Created ' + name + ' \u2014 rename it to .html/.css/.js');
+    var name = createFile(nextUntitledName(), 'txt');
+    showToast('Created ' + name + ' \u2014 rename it to .html/.css/.js');
   }
 
   function renderSaveAsModal(){
