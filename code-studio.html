@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+<title>Code Studio</title>
+<style>
+  :root{
+    --bg-app: #262b33;
+    --bg-topbar: #1b1e24;
+    --bg-tabs: #20242b;
+    --bg-drawer: #1a1d23;
+    --bg-panel: #1e2129;
+    --bg-editor: #262b33;
+    --border-subtle: #33394333;
+    --divider: #3a4049;
+    --text-main: #e7e9ee;
+    --text-dim: #8a90a0;
+    --text-faint: #565c68;
+    --accent: #ffc233;
+    --accent-soft: #ffc23322;
+    --html-color: #e44d26;
+    --css-color: #2f9bda;
+    --js-color: #f0db4f;
+    --tok-tag: #6fb3e0;
+    --tok-attr: #d3a15c;
+    --tok-string: #9fd88a;
+    --tok-comment: #5c6370;
+    --tok-keyword: #c586c0;
+    --tok-number: #d19a66;
+    --tok-selector: #e5c07b;
+    --tok-prop: #6fb3e0;
+    --tok-value: #9fd88a;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --code-size: 15px;
+    --editor-bottom-pad: 40vh;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0e1014;
+    font-family: var(--font-ui);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #phone {
+    max-width: 480px;
+    height: 100vh;
+    margin: 0 auto;
+    background: var(--bg-app);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    background: var(--bg-topbar);
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 10px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--divider);
+  }
+  .icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-main);
+    font-size: 19px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .icon-btn:active { background: rgba(255,255,255,0.08); }
+  .title-block {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .file-title {
+    color: var(--text-main);
+    font-size: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-subtitle {
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-top: 1px;
+  }
+  .top-actions { display: flex; align-items: center; gap: 2px; }
+
+  /* ---------- Tabs ---------- */
+  .tabs {
+    display: flex;
+    background: var(--bg-tabs);
+    overflow-x: auto;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--divider);
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 12px;
+    white-space: nowrap;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .tab.active {
+    color: var(--text-main);
+    border-bottom: 2px solid var(--accent);
+    background: rgba(255,255,255,0.02);
+  }
+  .tab .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .tab .ficon {
+    width: 15px; height: 15px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800;
+    border-radius: 3px;
+    color: #fff;
+  }
+  .tab .ficon.html { background: var(--html-color); }
+  .tab .ficon.css { background: var(--css-color); }
+  .tab .ficon.js { background: var(--js-color); color:#1a1a1a; }
+  .tab .close {
+    color: var(--text-faint);
+    font-size: 14px;
+    padding: 2px;
+    margin-left: 2px;
+  }
+  .tab .close:hover { color: var(--text-main); }
+
+  /* ---------- Editor ---------- */
+  .editor-wrap {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg-editor);
+  }
+  .line-numbers {
+    padding: 8px 8px var(--editor-bottom-pad) 12px;
+    text-align: right;
+    color: var(--text-faint);
+    font-family: var(--font-code);
+    font-size: var(--code-size);
+    line-height: 1.55;
+    user-select: none;
+    overflow: hidden;
+    flex-shrink: 0;
+    white-space: pre;
+  }
+  .code-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .highlight-layer, .code-input {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    margin: 0;
+    padding: 8px 12px var(--editor-bottom-pad) 6px;
+    font-family: var(--font-code);
+    font-size: var(--code-size);
+    line-height: 1.55;
+    white-space: pre;
+    overflow: auto;
+    tab-size: 2;
+    border: none;
+  }
+  .highlight-layer {
+    color: var(--text-main);
+    pointer-events: none;
+    background: transparent;
+  }
+  .code-input {
+    background: transparent;
+    color: transparent;
+    caret-color: #fff;
+    resize: none;
+    outline: none;
+    z-index: 1;
+    -webkit-text-fill-color: transparent;
+  }
+  .code-input.wrap, .highlight-layer.wrap { white-space: pre-wrap; word-break: break-word; }
+
+  .tok-tag { color: var(--tok-tag); }
+  .tok-attr { color: var(--tok-attr); }
+  .tok-string { color: var(--tok-string); }
+  .tok-comment { color: var(--tok-comment); font-style: italic; }
+  .tok-keyword { color: var(--tok-keyword); }
+  .tok-number { color: var(--tok-number); }
+  .tok-selector { color: var(--tok-selector); }
+  .tok-prop { color: var(--tok-prop); }
+  .tok-value { color: var(--tok-value); }
+  .tok-connect { color: var(--accent); font-weight: 700; }
+
+  /* ---------- Bottom symbol toolbar ---------- */
+  .symbol-toolbar {
+    display: flex;
+    overflow-x: auto;
+    background: var(--bg-topbar);
+    border-top: 1px solid var(--divider);
+    flex-shrink: 0;
+    scrollbar-width: none;
+  }
+  .symbol-toolbar::-webkit-scrollbar { display: none; }
+  .sym-btn {
+    color: var(--text-main);
+    font-family: var(--font-code);
+    font-size: 15px;
+    padding: 10px 18px;
+    background: none;
+    border: none;
+    flex-shrink: 0;
+  }
+  .sym-btn:active { background: rgba(255,255,255,0.08); }
+
+  /* ---------- Scroll-to-top fab (decorative, matches screenshot) ---------- */
+  .fab {
+    position: absolute;
+    right: 14px;
+    bottom: 54px;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: #2f333c;
+    border: 1px solid var(--divider);
+    color: var(--text-main);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  }
+
+  /* ---------- Overlays / Drawer ---------- */
+  .scrim {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 20;
+  }
+  .scrim.show { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: absolute;
+    top: 0; right: 0;
+    width: 74%;
+    max-width: 340px;
+    height: 100%;
+    background: var(--bg-drawer);
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    z-index: 21;
+    overflow-y: auto;
+    box-shadow: -2px 0 18px rgba(0,0,0,0.4);
+  }
+  .drawer.show { transform: translateX(0); }
+  .drawer-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 18px;
+    color: var(--text-main);
+    font-size: 15px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+  }
+  .drawer-item:active { background: rgba(255,255,255,0.05); }
+  .drawer-item .di-icon { color: var(--text-dim); font-size: 15px; width: 20px; text-align: center; }
+  .drawer-gap { height: 8px; background: rgba(0,0,0,0.15); }
+
+  /* ---------- More popup menu ---------- */
+  .popup-menu {
+    position: absolute;
+    top: 54px; right: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--divider);
+    border-radius: 10px;
+    min-width: 190px;
+    z-index: 25;
+    overflow: hidden;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    display: none;
+  }
+  .popup-menu.show { display: block; }
+  .popup-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    color: var(--text-main);
+    font-size: 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .popup-item:last-child { border-bottom: none; }
+  .popup-item:active { background: rgba(255,255,255,0.06); }
+  .popup-item .pi-icon { width: 18px; text-align: center; font-size: 15px; color: var(--text-dim); flex-shrink: 0; }
+  .popup-item .pi-label { flex: 1; }
+  .popup-item .pi-check {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--text-faint);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .popup-item .pi-check.checked { background: var(--accent); border-color: var(--accent); }
+  .popup-gap { height: 6px; background: rgba(0,0,0,0.15); }
+  .popup-menu.preview-menu { top: 46px; }
+
+  /* ---------- Modal ---------- */
+  .modal-scrim {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: flex-end;
+    z-index: 30;
+  }
+  .modal-scrim.show { display: flex; }
+  .modal-scrim.modal-scrim-top { align-items: flex-start; padding-top: 8vh; }
+  .modal-scrim.modal-scrim-top .modal-card { border-radius: 16px; }
+  .modal-card {
+    background: var(--bg-panel);
+    width: 100%;
+    max-height: 84%;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 18px 20px;
+    overflow-y: auto;
+    animation: slideUp 0.18s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(24px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .modal-title {
+    color: var(--text-main);
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0 0 14px;
+  }
+  .modal-input {
+    width: 100%;
+    background: var(--bg-app);
+    border: 1px solid var(--divider);
+    color: var(--text-main);
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-size: 15px;
+    font-family: var(--font-code);
+    margin-bottom: 12px;
+    outline: none;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .btn {
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-ghost { background: none; color: var(--text-dim); }
+  .btn-primary { background: var(--accent); color: #1a1a1a; }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-main);
+    font-size: 14.5px;
+    cursor: pointer;
+  }
+  .file-row .frow-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .frow-del { color: var(--text-faint); font-size: 15px; padding: 4px; }
+  .empty-hint { color: var(--text-faint); font-size: 13.5px; padding: 14px 4px; }
+  .help-block { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
+  .help-code {
+    display: block;
+    background: var(--bg-app);
+    border: 1px solid var(--divider);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--accent);
+    font-family: var(--font-code);
+    font-size: 13px;
+    margin: 8px 0 14px;
+  }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .setting-label { color: var(--text-main); font-size: 14.5px; }
+  .switch {
+    width: 42px; height: 24px;
+    background: var(--divider);
+    border-radius: 20px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .switch.on { background: var(--accent); }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px;
+    background: #fff; border-radius: 50%;
+    transition: transform 0.15s ease;
+  }
+  .switch.on .knob { transform: translateX(18px); }
+  .seg-group { display: flex; gap: 6px; }
+  .seg-btn {
+    padding: 6px 12px; border-radius: 7px;
+    background: var(--bg-app); border: 1px solid var(--divider);
+    color: var(--text-dim); font-size: 13px; cursor: pointer;
+  }
+  .seg-btn.active { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- Preview overlay ---------- */
+  .preview-overlay {
+    position: absolute; inset: 0;
+    background: #fff;
+    display: none;
+    flex-direction: column;
+    z-index: 40;
+  }
+  .preview-overlay.show { display: flex; }
+  .preview-topbar {
+    background: var(--bg-topbar);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .preview-topbar .pt-actions { display: flex; gap: 16px; align-items: center; }
+  .preview-topbar .pt-actions span { cursor: pointer; position: relative; }
+  .preview-console-dot {
+    position: absolute;
+    top: -4px; right: -7px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #ff6b6b;
+    display: none;
+  }
+  .preview-console-dot.show { display: block; }
+  .preview-body { flex: 1; position: relative; overflow: hidden; display: flex; }
+  #previewFrame { flex: 1; border: none; width: 100%; background: #fff; }
+  .preview-body.device-mode { justify-content: center; background: #14171d; }
+  .preview-body.device-mode #previewFrame { flex: none; width: 375px; max-width: 92%; box-shadow: 0 0 0 1px var(--divider); }
+
+  /* ---------- Console panel (lives inside the preview overlay) ---------- */
+  .preview-console-panel {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 46%;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--divider);
+    display: none;
+    flex-direction: column;
+    z-index: 5;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
+  }
+  .preview-console-panel.show { display: flex; }
+
+  /* ---------- Terminal panel (main editor) ---------- */
+  .side-panel {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 46%;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--divider);
+    display: none;
+    flex-direction: column;
+    z-index: 22;
+  }
+  .side-panel.show { display: flex; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--divider);
+    color: var(--text-main);
+    font-size: 13.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .panel-head span.clear-btn { color: var(--text-dim); font-weight: 400; cursor: pointer; }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-family: var(--font-code);
+    font-size: 12.5px;
+  }
+  .log-line { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
+  .log-line.error { color: #ff6b6b; }
+  .log-line.warn { color: #ffd166; }
+  .term-input-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--divider);
+    flex-shrink: 0;
+  }
+  .term-prompt { color: var(--accent); font-family: var(--font-code); font-size: 13px; }
+  .term-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text-main); font-family: var(--font-code); font-size: 13px;
+  }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: absolute;
+    bottom: 70px; left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #34383f;
+    color: var(--text-main);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s ease;
+    z-index: 60;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="phone">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <button class="icon-btn" id="menuBtn" title="Menu">&#9776;</button>
+    <div class="title-block">
+      <div class="file-title" id="fileTitle">index.html</div>
+      <div class="file-subtitle" id="fileSubtitle">New file</div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="renameBtn" title="Rename">&#9998;</button>
+      <button class="icon-btn" id="runBtn" title="Run">&#9654;</button>
+      <button class="icon-btn" id="moreBtn" title="More">&#8942;</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabsRow"></div>
+
+  <!-- Editor -->
+  <div class="editor-wrap">
+    <div class="line-numbers" id="lineNumbers">1</div>
+    <div class="code-area">
+      <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+    </div>
+    <div class="fab" id="fab">&#8963;</div>
+  </div>
+
+  <!-- Bottom symbol toolbar -->
+  <div class="symbol-toolbar" id="symbolToolbar"></div>
+
+  <!-- Drawer -->
+  <div class="scrim" id="drawerScrim"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-item" data-action="new"><span>New file</span><span class="di-icon">&#128196;</span></div>
+    <div class="drawer-item" data-action="save"><span>Save</span><span class="di-icon">&#128190;</span></div>
+    <div class="drawer-item" data-action="saveas"><span>Save as</span><span class="di-icon">&#128427;</span></div>
+    <div class="drawer-item" data-action="files"><span>Files</span><span class="di-icon">&#128193;</span></div>
+    <div class="drawer-item" data-action="import"><span>Import file</span><span class="di-icon">&#128229;</span></div>
+    <div class="drawer-item" data-action="closefile"><span>Close file</span><span class="di-icon">&#10005;</span></div>
+    <div class="drawer-gap"></div>
+    <div class="drawer-item" data-action="recent"><span>Open recent</span><span class="di-icon">&#128340;</span></div>
+    <div class="drawer-item" data-action="find"><span>Find file</span><span class="di-icon">&#128269;</span></div>
+    <div class="drawer-gap"></div>
+    <div class="drawer-item" data-action="console"><span>Console</span><span class="di-icon">&#10088;&#10089;</span></div>
+    <div class="drawer-item" data-action="terminal"><span>Terminal</span><span class="di-icon">&#9002;_</span></div>
+    <div class="drawer-gap"></div>
+    <div class="drawer-item" data-action="settings"><span>Settings</span><span class="di-icon">&#9881;</span></div>
+    <div class="drawer-item" data-action="help"><span>Help</span><span class="di-icon">?</span></div>
+    <div class="drawer-item" data-action="exit"><span>Exit</span><span class="di-icon">&#10132;</span></div>
+  </div>
+
+  <!-- More popup menu -->
+  <div class="popup-menu" id="moreMenu">
+    <div class="popup-item" data-action="wrap">Toggle word wrap</div>
+    <div class="popup-item" data-action="beautify">Beautify indentation</div>
+    <div class="popup-item" data-action="selectall">Select all</div>
+    <div class="popup-item" data-action="help2">Connect syntax help</div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-scrim" id="modalScrim">
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
+  <!-- Preview overlay -->
+  <div class="preview-overlay" id="previewOverlay">
+    <div class="preview-topbar">
+      <span id="previewLabel">Preview</span>
+      <div class="pt-actions">
+        <span id="previewMoreBtn" title="More">&#8942;<span class="preview-console-dot" id="previewConsoleDot"></span></span>
+        <span id="previewReload" title="Reload">&#8635;</span>
+        <span id="previewClose" title="Close">&#10005;</span>
+      </div>
+    </div>
+    <div class="popup-menu preview-menu" id="previewMoreMenu">
+      <div class="popup-item" data-action="devices">
+        <span class="pi-icon">&#128241;</span><span class="pi-label">Devices</span><span class="pi-check" id="chkDevices"></span>
+      </div>
+      <div class="popup-item" data-action="cache">
+        <span class="pi-icon">&#129529;</span><span class="pi-label">Disable Cache</span><span class="pi-check" id="chkCache"></span>
+      </div>
+      <div class="popup-item" data-action="consoletoggle">
+        <span class="pi-icon">&#10088;&#10089;</span><span class="pi-label">Console</span><span class="pi-check" id="chkConsole"></span>
+      </div>
+      <div class="popup-gap"></div>
+      <div class="popup-item" data-action="openbrowser">
+        <span class="pi-icon">&#128228;</span><span class="pi-label">Open in Browser</span>
+      </div>
+      <div class="popup-item" data-action="exit">
+        <span class="pi-icon">&#10132;</span><span class="pi-label">Exit</span>
+      </div>
+    </div>
+    <div class="preview-body" id="previewBody">
+      <iframe id="previewFrame" sandbox="allow-scripts allow-modals allow-forms allow-popups"></iframe>
+      <div class="preview-console-panel" id="previewConsolePanel">
+        <div class="panel-head"><span>Console</span><span class="clear-btn" id="previewConsoleClear">Clear</span></div>
+        <div class="panel-body" id="previewConsoleBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal panel -->
+  <div class="side-panel" id="terminalPanel">
+    <div class="panel-head"><span>Terminal</span><span class="clear-btn" id="terminalClear">Clear</span></div>
+    <div class="panel-body" id="terminalBody"></div>
+    <div class="term-input-row">
+      <span class="term-prompt">&gt;</span>
+      <input class="term-input" id="terminalInput" placeholder="type a command, e.g. help">
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <input type="file" id="importFileInput" accept=".html,.htm,.css,.js,.txt" style="display:none">
+</div>
+
+<script>
+(function(){
+
+  /* ============================================================
+     STATE
+  ============================================================ */
+  var files = {};          // filename -> { content, type, dirty, saved }
+  var openTabs = [];        // array of filenames
+  var activeFile = null;
+  var recentFiles = [];      // recently opened filenames, most recent first
+  var wordWrap = false;
+  var fontSize = 15;
+  var STORAGE_KEY = 'code-studio-vfs';
+
+  function defaultTemplate(type){
+    if(type === 'html'){
+      return '<!DOCTYPE html>\n<html>\n  <head>\n    <title>New Page</title>\n    <connect="style.css">\n  </head>\n  <body>\n    \n  </body>\n</html>';
+    }
+    if(type === 'css'){
+      return 'body {\n  \n}';
+    }
+    if(type === 'js'){
+      return 'console.log("hello");';
+    }
+    return '';
+  }
+
+  function extType(name){
+    var m = /\.([a-zA-Z0-9]+)$/.exec(name);
+    if(!m) return 'txt';
+    var e = m[1].toLowerCase();
+    if(e === 'html' || e === 'htm') return 'html';
+    if(e === 'css') return 'css';
+    if(e === 'js') return 'js';
+    return 'txt';
+  }
+
+  function seedDefaults(){
+    files = {
+      'index.html': {
+        content: '<!DOCTYPE html>\n<html>\n  <head>\n    <title>My Page</title>\n    <connect="style.css">\n  </head>\n  <body>\n    <h1>Hello World</h1>\n    <p>Edit this file, then tap the play button to preview it.</p>\n    <connect="script.js">\n  </body>\n</html>',
+        type: 'html', dirty: false, saved: true
+      },
+      'style.css': {
+        content: 'body {\n  font-family: sans-serif;\n  background: #fafafa;\n  color: #222;\n  padding: 24px;\n}\n\nh1 {\n  color: #e44d26;\n}',
+        type: 'css', dirty: false, saved: true
+      },
+      'script.js': {
+        content: 'console.log("Hello from script.js");',
+        type: 'js', dirty: false, saved: true
+      },
+      'untitled.html': {
+        content: defaultTemplate('html'),
+        type: 'html', dirty: false, saved: false
+      }
+    };
+    openTabs = ['untitled.html', 'index.html'];
+    activeFile = 'index.html';
+    recentFiles = ['index.html', 'style.css', 'script.js', 'untitled.html'];
+  }
+
+  /* ============================================================
+     PERSISTENCE
+  ============================================================ */
+  function persist(){
+    var payload = { files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
+    try {
+      window.storage.set(STORAGE_KEY, JSON.stringify(payload), false).catch(function(){});
+    } catch(e){ /* storage not available, continue silently */ }
+  }
+
+  function loadState(cb){
+    try {
+      window.storage.get(STORAGE_KEY, false).then(function(res){
+        if(res && res.value){
+          try {
+            var data = JSON.parse(res.value);
+            if(data && data.files && Object.keys(data.files).length){
+              files = data.files;
+              openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
+              activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
+              recentFiles = data.recentFiles || [];
+              cb();
+              return;
+            }
+          } catch(e){ /* fall through to defaults */ }
+        }
+        seedDefaults();
+        cb();
+      }).catch(function(){
+        seedDefaults();
+        cb();
+      });
+    } catch(e){
+      seedDefaults();
+      cb();
+    }
+  }
+
+  /* ============================================================
+     UTIL
+  ============================================================ */
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showToast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+  }
+
+  /* ============================================================
+     SYNTAX HIGHLIGHTING (lightweight, regex based)
+  ============================================================ */
+  function highlightHTML(raw){
+    var esc = escapeHtml(raw);
+    // custom connect tag first
+    esc = esc.replace(/(&lt;connect\s*=\s*(&quot;|"|')[^&"']*\2\s*&gt;)/g, function(m){
+      return '<span class="tok-connect">' + m + '</span>';
+    });
+    // comments
+    esc = esc.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comment">$1</span>');
+    // tags
+    esc = esc.replace(/(&lt;\/?)([a-zA-Z][a-zA-Z0-9\-]*)((?:\s+[^&]*?)?)(\/?&gt;)/g, function(m, open, tagname, attrs, close){
+      if(/connect/i.test(tagname)) return m;
+      var hAttrs = attrs.replace(/([a-zA-Z\-:]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
+      return '<span class="tok-tag">' + open + tagname + '</span>' + hAttrs + '<span class="tok-tag">' + close + '</span>';
+    });
+    return esc;
+  }
+
+  function highlightCSS(raw){
+    var esc = escapeHtml(raw);
+    esc = esc.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comment">$1</span>');
+    esc = esc.replace(/([.#]?[a-zA-Z0-9_\-\[\]="':., >*]+?)(\s*\{)/g, '<span class="tok-selector">$1</span>$2');
+    esc = esc.replace(/([a-zA-Z\-]+)(\s*:)(?!\s*\/\/)/g, '<span class="tok-prop">$1</span>$2');
+    esc = esc.replace(/(:\s*)([^;{}\n]+)(;)/g, '$1<span class="tok-value">$2</span>$3');
+    return esc;
+  }
+
+  function highlightJS(raw){
+    var esc = escapeHtml(raw);
+    esc = esc.replace(/(\/\/[^\n]*)/g, '<span class="tok-comment">$1</span>');
+    esc = esc.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comment">$1</span>');
+    esc = esc.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="tok-string">$1</span>');
+    esc = esc.replace(/\b(function|return|var|let|const|if|else|for|while|do|new|typeof|class|extends|import|from|export|default|await|async|try|catch|finally|throw|switch|case|break|continue|null|undefined|true|false|this|in|of|instanceof|delete|void|yield|static|get|set)\b/g, '<span class="tok-keyword">$1</span>');
+    esc = esc.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
+    return esc;
+  }
+
+  function highlightFor(type, raw){
+    if(type === 'html') return highlightHTML(raw);
+    if(type === 'css') return highlightCSS(raw);
+    if(type === 'js') return highlightJS(raw);
+    return escapeHtml(raw);
+  }
+
+  /* ============================================================
+     RENDER: tabs, editor, line numbers, toolbar
+  ============================================================ */
+  var tabsRow = document.getElementById('tabsRow');
+  var fileTitle = document.getElementById('fileTitle');
+  var fileSubtitle = document.getElementById('fileSubtitle');
+  var runBtn = document.getElementById('runBtn');
+  var lineNumbers = document.getElementById('lineNumbers');
+  var codeInput = document.getElementById('codeInput');
+  var highlightCode = document.getElementById('highlightCode');
+  var highlightLayer = document.getElementById('highlightLayer');
+
+  function ficonHtml(type){
+    if(type === 'html') return '<span class="ficon html">5</span>';
+    if(type === 'css') return '<span class="ficon css">3</span>';
+    if(type === 'js') return '<span class="ficon js">JS</span>';
+    return '<span class="ficon" style="background:#555">TX</span>';
+  }
+
+  function renderTabs(){
+    tabsRow.innerHTML = '';
+    openTabs.forEach(function(name){
+      var f = files[name];
+      if(!f) return;
+      var tab = document.createElement('div');
+      tab.className = 'tab' + (name === activeFile ? ' active' : '');
+      tab.innerHTML = ficonHtml(f.type) +
+        '<span class="tname">' + escapeHtml(name) + '</span>' +
+        (f.dirty ? '<span class="dot"></span>' : '') +
+        '<span class="close" data-close="' + escapeHtml(name) + '">&times;</span>';
+      tab.addEventListener('click', function(e){
+        if(e.target.dataset && e.target.dataset.close){
+          e.stopPropagation();
+          closeTab(e.target.dataset.close);
+          return;
+        }
+        switchToFile(name);
+      });
+      tabsRow.appendChild(tab);
+    });
+  }
+
+  function renderTitle(){
+    var f = files[activeFile];
+    if(!f){ fileTitle.textContent = 'No file open'; fileSubtitle.textContent = ''; runBtn.style.display = 'none'; return; }
+    fileTitle.textContent = activeFile;
+    fileSubtitle.textContent = f.dirty ? 'Unsaved changes' : (f.saved ? 'Saved' : 'New file');
+    runBtn.style.display = (f.type === 'html' || f.type === 'css' || f.type === 'js') ? '' : 'none';
+  }
+
+  var wrapMeasureEl = null;
+  function getWrapMeasureEl(){
+    if(wrapMeasureEl) return wrapMeasureEl;
+    wrapMeasureEl = document.createElement('div');
+    wrapMeasureEl.style.position = 'absolute';
+    wrapMeasureEl.style.visibility = 'hidden';
+    wrapMeasureEl.style.top = '0';
+    wrapMeasureEl.style.left = '-99999px';
+    wrapMeasureEl.style.pointerEvents = 'none';
+    wrapMeasureEl.style.margin = '0';
+    wrapMeasureEl.style.padding = '0';
+    wrapMeasureEl.style.whiteSpace = 'pre-wrap';
+    wrapMeasureEl.style.wordBreak = 'break-word';
+    document.body.appendChild(wrapMeasureEl);
+    return wrapMeasureEl;
+  }
+
+  // Measures each logical line's real wrapped height (using the same
+  // font, width and wrap rules as the textarea) so the gutter can show
+  // one number per logical line and blank rows for its wrapped
+  // continuation — keeping it pixel-aligned instead of assuming every
+  // line is exactly one visual row.
+  function computeWrappedLineNumbers(text){
+    var el = getWrapMeasureEl();
+    var cs = getComputedStyle(codeInput);
+    el.style.fontFamily = cs.fontFamily;
+    el.style.fontSize = cs.fontSize;
+    el.style.lineHeight = cs.lineHeight;
+    var padLeft = parseFloat(cs.paddingLeft) || 0;
+    var padRight = parseFloat(cs.paddingRight) || 0;
+    var contentWidth = Math.max(20, codeInput.clientWidth - padLeft - padRight);
+    el.style.width = contentWidth + 'px';
+    el.innerHTML = '';
+
+    var probe = document.createElement('div');
+    probe.textContent = 'M';
+    el.appendChild(probe);
+    var singleRowHeight = probe.getBoundingClientRect().height ||
+      (parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.55);
+
+    var lines = text.split('\n');
+    var divs = new Array(lines.length);
+    for(var i = 0; i < lines.length; i++){
+      var d = document.createElement('div');
+      d.textContent = lines[i].length ? lines[i] : '\u00A0';
+      el.appendChild(d);
+      divs[i] = d;
+    }
+
+    var out = [];
+    for(var j = 0; j < divs.length; j++){
+      var h = divs[j].getBoundingClientRect().height;
+      var rows = Math.max(1, Math.round(h / singleRowHeight));
+      out.push(String(j + 1));
+      for(var k = 1; k < rows; k++) out.push('');
+    }
+
+    el.innerHTML = '';
+    return out.join('\n');
+  }
+
+  function renderLineNumbers(){
+    var f = files[activeFile];
+    var content = f ? f.content : '';
+    if(wordWrap && f){
+      lineNumbers.textContent = computeWrappedLineNumbers(content);
+      return;
+    }
+    var count = content.split('\n').length;
+    var lines = [];
+    for(var i = 1; i <= count; i++) lines.push(i);
+    lineNumbers.textContent = lines.join('\n');
+  }
+
+  function renderEditor(){
+    var f = files[activeFile];
+    if(!f){
+      codeInput.value = '';
+      highlightCode.innerHTML = '';
+      codeInput.disabled = true;
+      renderLineNumbers();
+      return;
+    }
+    codeInput.disabled = false;
+    codeInput.value = f.content;
+    highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
+    applyWrapSetting();
+    codeInput.scrollTop = 0;
+    codeInput.scrollLeft = 0;
+    highlightLayer.scrollTop = 0;
+    highlightLayer.scrollLeft = 0;
+    lineNumbers.scrollTop = 0;
+  }
+
+  function applyWrapSetting(){
+    codeInput.classList.toggle('wrap', wordWrap);
+    highlightLayer.classList.toggle('wrap', wordWrap);
+    renderLineNumbers();
+  }
+
+  function syncScroll(){
+    highlightLayer.scrollTop = codeInput.scrollTop;
+    highlightLayer.scrollLeft = codeInput.scrollLeft;
+    lineNumbers.scrollTop = codeInput.scrollTop;
+  }
+
+  codeInput.addEventListener('scroll', syncScroll);
+
+  codeInput.addEventListener('input', function(){
+    var f = files[activeFile];
+    if(!f) return;
+    f.content = codeInput.value;
+    f.dirty = true;
+    highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
+    renderLineNumbers();
+    renderTitle();
+    renderTabs();
+  });
+
+  codeInput.addEventListener('keydown', function(e){
+    if(e.key === 'Tab'){
+      e.preventDefault();
+      var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+      var val = codeInput.value;
+      codeInput.value = val.slice(0, start) + '  ' + val.slice(end);
+      codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+      codeInput.dispatchEvent(new Event('input'));
+    }
+  });
+
+  /* ============================================================
+     SYMBOL TOOLBAR
+  ============================================================ */
+  var symbols = ['{','}','[',']','(',')','<','>','"',';',':','/','=','-'];
+  var symToolbar = document.getElementById('symbolToolbar');
+  symbols.forEach(function(sym){
+    var b = document.createElement('button');
+    b.className = 'sym-btn';
+    b.textContent = sym;
+    b.addEventListener('click', function(){
+      if(codeInput.disabled) return;
+      var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+      var val = codeInput.value;
+      codeInput.value = val.slice(0, start) + sym + val.slice(end);
+      codeInput.selectionStart = codeInput.selectionEnd = start + sym.length;
+      codeInput.focus();
+      codeInput.dispatchEvent(new Event('input'));
+    });
+    symToolbar.appendChild(b);
+  });
+
+  /* ============================================================
+     FILE ACTIONS
+  ============================================================ */
+  function touchRecent(name){
+    recentFiles = recentFiles.filter(function(n){ return n !== name; });
+    recentFiles.unshift(name);
+    if(recentFiles.length > 12) recentFiles.length = 12;
+  }
+
+  // Pulls a real file in from the phone's storage (via the native file
+  // picker) and loads it into the virtual file system as an open tab.
+  function importFileFromDevice(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var name = file.name;
+      var type = extType(name);
+      var content = typeof reader.result === 'string' ? reader.result : '';
+      if(files[name]){
+        files[name].content = content;
+        files[name].type = type;
+        files[name].dirty = false;
+        files[name].saved = true;
+      } else {
+        files[name] = { content: content, type: type, dirty: false, saved: true };
+      }
+      switchToFile(name);
+      showToast('Imported ' + name);
+    };
+    reader.onerror = function(){ showToast('Could not read that file'); };
+    reader.readAsText(file);
+  }
+
+  document.getElementById('importFileInput').addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if(file) importFileFromDevice(file);
+  });
+
+  function switchToFile(name){
+    if(!files[name]) return;
+    activeFile = name;
+    if(openTabs.indexOf(name) === -1) openTabs.push(name);
+    touchRecent(name);
+    renderAll();
+    persist();
+  }
+
+  function closeTab(name){
+    var idx = openTabs.indexOf(name);
+    if(idx === -1) return;
+    openTabs.splice(idx, 1);
+    if(activeFile === name){
+      activeFile = openTabs.length ? openTabs[Math.max(0, idx - 1)] : null;
+    }
+    renderAll();
+    persist();
+  }
+
+  function nextUntitledName(){
+    if(!files['untitled.txt']) return 'untitled.txt';
+    var n = 2;
+    while(files['untitled(' + n + ').txt']) n++;
+    return 'untitled(' + n + ').txt';
+  }
+
+  function createFile(name, type){
+    if(files[name]){ showToast('A file named "' + name + '" already exists'); return false; }
+    files[name] = { content: defaultTemplate(type), type: type, dirty: false, saved: false };
+    openTabs.push(name);
+    activeFile = name;
+    touchRecent(name);
+    renderAll();
+    persist();
+    return true;
+  }
+
+  function saveActive(){
+    var f = files[activeFile];
+    if(!f){ showToast('No file open'); return; }
+    f.dirty = false;
+    f.saved = true;
+    renderAll();
+    persist();
+    showToast('Saved ' + activeFile);
+  }
+
+  function saveAs(newName){
+    var f = files[activeFile];
+    if(!f) return;
+    if(files[newName]){ showToast('A file named "' + newName + '" already exists'); return; }
+    files[newName] = { content: f.content, type: extType(newName), dirty: false, saved: true };
+    openTabs.push(newName);
+    activeFile = newName;
+    touchRecent(newName);
+    renderAll();
+    persist();
+    showToast('Saved as ' + newName);
+  }
+
+  function deleteFile(name){
+    delete files[name];
+    openTabs = openTabs.filter(function(n){ return n !== name; });
+    recentFiles = recentFiles.filter(function(n){ return n !== name; });
+    if(activeFile === name){
+      activeFile = openTabs.length ? openTabs[0] : (Object.keys(files)[0] || null);
+    }
+    renderAll();
+    persist();
+  }
+
+  function renameActive(newName){
+    var old = activeFile;
+    var f = files[old];
+    if(!f) return;
+    if(newName === old) return;
+    if(files[newName]){ showToast('A file named "' + newName + '" already exists'); return; }
+    files[newName] = f;
+    f.type = extType(newName);
+    delete files[old];
+    openTabs = openTabs.map(function(n){ return n === old ? newName : n; });
+    recentFiles = recentFiles.map(function(n){ return n === old ? newName : n; });
+    activeFile = newName;
+    renderAll();
+    persist();
+    showToast('Renamed to ' + newName);
+  }
+
+  function renderAll(){
+    renderTabs();
+    renderTitle();
+    renderEditor();
+  }
+
+  /* ============================================================
+     DRAWER
+  ============================================================ */
+  var drawer = document.getElementById('drawer');
+  var drawerScrim = document.getElementById('drawerScrim');
+  function openDrawer(){ drawer.classList.add('show'); drawerScrim.classList.add('show'); }
+  function closeDrawer(){ drawer.classList.remove('show'); drawerScrim.classList.remove('show'); }
+  document.getElementById('menuBtn').addEventListener('click', openDrawer);
+  drawerScrim.addEventListener('click', closeDrawer);
+
+  drawer.addEventListener('click', function(e){
+    var item = e.target.closest('.drawer-item');
+    if(!item) return;
+    var action = item.dataset.action;
+    closeDrawer();
+    handleDrawerAction(action);
+  });
+
+  // Exiting the studio only makes sense when this app is embedded inside
+  // Nimbus (as an iframe). In that case we notify the parent page so it can
+  // switch back to the dashboard. When opened standalone, there's nowhere
+  // to "exit" to, so we just let the person know.
+  function exitCodeStudio(){
+    if(window.parent && window.parent !== window){
+      window.parent.postMessage({ __codeStudioExit: true }, '*');
+    } else {
+      showToast('Exit is only available inside Nimbus');
+    }
+  }
+
+  function handleDrawerAction(action){
+    if(action === 'new') createNewUntitledFile();
+    else if(action === 'save') saveActive();
+    else if(action === 'saveas') openModal('saveas');
+    else if(action === 'files') openModal('files');
+    else if(action === 'import') document.getElementById('importFileInput').click();
+    else if(action === 'closefile') { if(activeFile) closeTab(activeFile); else showToast('No file open'); }
+    else if(action === 'recent') openModal('recent');
+    else if(action === 'find') openModal('find');
+    else if(action === 'console') openPreviewWithConsole();
+    else if(action === 'terminal') toggleTerminal();
+    else if(action === 'settings') openModal('settings');
+    else if(action === 'help') openModal('help');
+    else if(action === 'exit') exitCodeStudio();
+  }
+
+  /* ============================================================
+     MORE MENU
+  ============================================================ */
+  var moreMenu = document.getElementById('moreMenu');
+  document.getElementById('moreBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    moreMenu.classList.toggle('show');
+  });
+  document.addEventListener('click', function(e){
+    if(!moreMenu.contains(e.target) && e.target.id !== 'moreBtn'){
+      moreMenu.classList.remove('show');
+    }
+  });
+  moreMenu.addEventListener('click', function(e){
+    var item = e.target.closest('.popup-item');
+    if(!item) return;
+    var action = item.dataset.action;
+    moreMenu.classList.remove('show');
+    if(action === 'wrap'){ wordWrap = !wordWrap; applyWrapSetting(); showToast('Word wrap ' + (wordWrap ? 'on' : 'off')); }
+    else if(action === 'beautify'){ beautifyActive(); }
+    else if(action === 'selectall'){ codeInput.focus(); codeInput.select(); }
+    else if(action === 'help2'){ openModal('help'); }
+  });
+
+  function beautifyActive(){
+    var f = files[activeFile];
+    if(!f) return;
+    var lines = f.content.split('\n').map(function(l){ return l.replace(/\s+$/,''); });
+    f.content = lines.join('\n');
+    renderEditor();
+    showToast('Trimmed trailing whitespace');
+  }
+
+  /* ============================================================
+     RENAME (pencil icon)
+  ============================================================ */
+  document.getElementById('renameBtn').addEventListener('click', function(){
+    if(!activeFile){ showToast('No file open'); return; }
+    openModal('rename');
+  });
+
+  /* ============================================================
+     MODALS
+  ============================================================ */
+  var modalScrim = document.getElementById('modalScrim');
+  var modalCard = document.getElementById('modalCard');
+
+  function closeModal(){ modalScrim.classList.remove('show'); modalScrim.classList.remove('modal-scrim-top'); modalCard.innerHTML = ''; }
+  modalScrim.addEventListener('click', function(e){ if(e.target === modalScrim) closeModal(); });
+
+  function openModal(kind){
+    modalCard.innerHTML = '';
+    if(kind === 'saveas') renderSaveAsModal();
+    else if(kind === 'rename') renderRenameModal();
+    else if(kind === 'files') renderFilesModal();
+    else if(kind === 'recent') renderRecentModal();
+    else if(kind === 'find') renderFindModal();
+    else if(kind === 'settings') renderSettingsModal();
+    else if(kind === 'help') renderHelpModal();
+    // Modals with a text field the user types into anchor near the top of
+    // the screen instead of the bottom, so the on-screen keyboard can't
+    // cover the field — independent of whatever the viewport-resize logic
+    // below does or doesn't do in a given browser.
+    var keyboardModal = (kind === 'saveas' || kind === 'rename' || kind === 'find');
+    modalScrim.classList.toggle('modal-scrim-top', keyboardModal);
+    modalScrim.classList.add('show');
+  }
+
+  function createNewUntitledFile(){
+    var name = nextUntitledName();
+    var ok = createFile(name, extType(name));
+    if(ok) showToast('Created ' + name + ' \u2014 rename it to .html/.css/.js');
+  }
+
+  function renderSaveAsModal(){
+    if(!activeFile){ showToast('No file open'); closeModal(); return; }
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Save as';
+    var input = document.createElement('input');
+    input.className = 'modal-input';
+    input.value = activeFile;
+
+    var actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    var cancel = document.createElement('button'); cancel.className = 'btn btn-ghost'; cancel.textContent = 'Cancel';
+    var save = document.createElement('button'); save.className = 'btn btn-primary'; save.textContent = 'Save';
+    cancel.addEventListener('click', closeModal);
+    save.addEventListener('click', function(){
+      var name = input.value.trim();
+      if(!name){ showToast('Enter a file name'); return; }
+      saveAs(name);
+      closeModal();
+    });
+    actions.appendChild(cancel); actions.appendChild(save);
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(input);
+    modalCard.appendChild(actions);
+    setTimeout(function(){ input.focus(); input.select(); }, 50);
+  }
+
+  function renderRenameModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Rename file';
+    var input = document.createElement('input');
+    input.className = 'modal-input';
+    input.value = activeFile;
+
+    var actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    var cancel = document.createElement('button'); cancel.className = 'btn btn-ghost'; cancel.textContent = 'Cancel';
+    var ok = document.createElement('button'); ok.className = 'btn btn-primary'; ok.textContent = 'Rename';
+    cancel.addEventListener('click', closeModal);
+    ok.addEventListener('click', function(){
+      var name = input.value.trim();
+      if(!name){ showToast('Enter a file name'); return; }
+      renameActive(name);
+      closeModal();
+    });
+    actions.appendChild(cancel); actions.appendChild(ok);
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(input);
+    modalCard.appendChild(actions);
+    setTimeout(function(){ input.focus(); input.select(); }, 50);
+  }
+
+  function fileListRows(names, onOpen, allowDelete){
+    var wrap = document.createElement('div');
+    if(!names.length){
+      var empty = document.createElement('div');
+      empty.className = 'empty-hint';
+      empty.textContent = 'Nothing here yet.';
+      wrap.appendChild(empty);
+      return wrap;
+    }
+    names.forEach(function(name){
+      var f = files[name];
+      if(!f) return;
+      var row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML = ficonHtml(f.type) + '<span class="frow-name">' + escapeHtml(name) + '</span>' +
+        (allowDelete ? '<span class="frow-del" data-del="' + escapeHtml(name) + '">&#128465;</span>' : '');
+      row.addEventListener('click', function(e){
+        if(e.target.dataset && e.target.dataset.del){
+          e.stopPropagation();
+          deleteFile(e.target.dataset.del);
+          row.remove();
+          return;
+        }
+        onOpen(name);
+      });
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function renderFilesModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Files';
+    modalCard.appendChild(title);
+    modalCard.appendChild(fileListRows(Object.keys(files), function(name){ switchToFile(name); closeModal(); }, true));
+  }
+
+  function renderRecentModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Open recent';
+    modalCard.appendChild(title);
+    var names = recentFiles.filter(function(n){ return files[n]; });
+    modalCard.appendChild(fileListRows(names, function(name){ switchToFile(name); closeModal(); }, false));
+  }
+
+  function renderFindModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Find file';
+    var input = document.createElement('input');
+    input.className = 'modal-input';
+    input.placeholder = 'Type to filter files...';
+    var resultsWrap = document.createElement('div');
+
+    function refresh(){
+      var q = input.value.trim().toLowerCase();
+      var names = Object.keys(files).filter(function(n){ return n.toLowerCase().indexOf(q) !== -1; });
+      resultsWrap.innerHTML = '';
+      resultsWrap.appendChild(fileListRows(names, function(name){ switchToFile(name); closeModal(); }, false));
+    }
+    input.addEventListener('input', refresh);
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(input);
+    modalCard.appendChild(resultsWrap);
+    refresh();
+    setTimeout(function(){ input.focus(); }, 50);
+  }
+
+  function renderSettingsModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Settings';
+
+    var wrapRow = document.createElement('div');
+    wrapRow.className = 'setting-row';
+    wrapRow.innerHTML = '<span class="setting-label">Word wrap</span>';
+    var sw = document.createElement('div');
+    sw.className = 'switch' + (wordWrap ? ' on' : '');
+    sw.innerHTML = '<div class="knob"></div>';
+    sw.addEventListener('click', function(){
+      wordWrap = !wordWrap;
+      sw.classList.toggle('on', wordWrap);
+      applyWrapSetting();
+    });
+    wrapRow.appendChild(sw);
+
+    var fontRow = document.createElement('div');
+    fontRow.className = 'setting-row';
+    fontRow.innerHTML = '<span class="setting-label">Font size</span>';
+    var seg = document.createElement('div');
+    seg.className = 'seg-group';
+    [13,15,17].forEach(function(sz){
+      var b = document.createElement('div');
+      b.className = 'seg-btn' + (fontSize === sz ? ' active' : '');
+      b.textContent = sz;
+      b.addEventListener('click', function(){
+        fontSize = sz;
+        document.documentElement.style.setProperty('--code-size', sz + 'px');
+        seg.querySelectorAll('.seg-btn').forEach(function(x){ x.classList.remove('active'); });
+        b.classList.add('active');
+      });
+      seg.appendChild(b);
+    });
+    fontRow.appendChild(seg);
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(wrapRow);
+    modalCard.appendChild(fontRow);
+  }
+
+  function renderHelpModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'How linking files works';
+
+    var block1 = document.createElement('div');
+    block1.className = 'help-block';
+    block1.textContent = 'Create separate .html, .css and .js files with New file. Inside an HTML file, pull in a CSS or JS file by writing a connect tag on its own line, anywhere in the document:';
+    var code1 = document.createElement('code');
+    code1.className = 'help-code';
+    code1.textContent = '<connect="style.css">\n<connect="script.js">';
+
+    var block2 = document.createElement('div');
+    block2.className = 'help-block';
+    block2.textContent = 'When you tap the play button, each connect tag is swapped for the real content of that file (CSS goes inside a style tag, JS goes inside a script tag) before the page is rendered. If the file name does not exist, that spot is simply skipped.';
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(block1);
+    modalCard.appendChild(code1);
+    modalCard.appendChild(block2);
+
+    var actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    var ok = document.createElement('button'); ok.className = 'btn btn-primary'; ok.textContent = 'Got it';
+    ok.addEventListener('click', closeModal);
+    actions.appendChild(ok);
+    modalCard.appendChild(actions);
+  }
+
+  /* ============================================================
+     RUN / PREVIEW  (the connect-tag compiler)
+  ============================================================ */
+  var previewOverlay = document.getElementById('previewOverlay');
+  var previewBody = document.getElementById('previewBody');
+  var previewFrame = document.getElementById('previewFrame');
+  var previewLabel = document.getElementById('previewLabel');
+  var previewConsolePanel = document.getElementById('previewConsolePanel');
+  var previewConsoleBody = document.getElementById('previewConsoleBody');
+  var previewConsoleDot = document.getElementById('previewConsoleDot');
+  var previewMoreBtn = document.getElementById('previewMoreBtn');
+  var previewMoreMenu = document.getElementById('previewMoreMenu');
+  var deviceMode = false;
+  var cacheDisabled = false;
+  var previewHistoryActive = false;
+
+  function findHtmlToRun(){
+    var f = files[activeFile];
+    if(f && f.type === 'html') return activeFile;
+    for(var i = 0; i < openTabs.length; i++){
+      if(files[openTabs[i]] && files[openTabs[i]].type === 'html') return openTabs[i];
+    }
+    return null;
+  }
+
+  function compileConnectTags(html){
+    return html.replace(/<connect\s*=\s*("([^"]+)"|'([^']+)')\s*>/gi, function(match, g1, g2, g3){
+      var fname = g2 || g3;
+      var f = files[fname];
+      if(!f) return '<!-- connect: "' + fname + '" was not found -->';
+      if(f.type === 'css') return '<style>\n' + f.content + '\n</style>';
+      if(f.type === 'js') return '<script>\n' + f.content + '\n<\/script>';
+      return '<!-- connect: "' + fname + '" is not a css or js file -->';
+    });
+  }
+
+  var consoleHookScript = '<script>(function(){var send=function(type,args){try{parent.postMessage({__console:true,type:type,args:args.map(function(a){try{return typeof a==="object"?JSON.stringify(a):String(a);}catch(e){return String(a);}})},"*");}catch(e){}};["log","error","warn","info"].forEach(function(m){var orig=console[m];console[m]=function(){var args=Array.prototype.slice.call(arguments);send(m,args);orig.apply(console,args);};});window.addEventListener("error",function(e){send("error",[e.message+" (line "+e.lineno+")"]);});})();<\/script>';
+
+  function clearPreviewConsole(){
+    previewConsoleBody.innerHTML = '';
+    previewConsoleDot.classList.remove('show');
+  }
+
+  // Recreates the iframe from scratch instead of just reassigning srcdoc,
+  // so nothing from the previous run (timers, in-page state) survives into
+  // the next one. This is what "Disable Cache" does in the preview.
+  function hardResetPreviewFrame(){
+    var fresh = document.createElement('iframe');
+    fresh.id = 'previewFrame';
+    fresh.setAttribute('sandbox', 'allow-scripts allow-modals allow-forms allow-popups');
+    previewFrame.parentNode.replaceChild(fresh, previewFrame);
+    previewFrame = fresh;
+  }
+
+  // Opening preview pushes a history entry so the phone's back gesture/
+  // button closes preview instead of leaving the app (see popstate below).
+  function showPreviewOverlay(){
+    previewOverlay.classList.add('show');
+    if(!previewHistoryActive){
+      previewHistoryActive = true;
+      history.pushState({ csPreview: true }, '');
+    }
+  }
+
+  // Used by the X button and the Exit menu item.
+  function hidePreviewOverlay(){
+    previewOverlay.classList.remove('show');
+    previewConsolePanel.classList.remove('show');
+    previewMoreMenu.classList.remove('show');
+    if(previewHistoryActive){
+      previewHistoryActive = false;
+      history.back();
+    }
+  }
+
+  window.addEventListener('popstate', function(){
+    if(previewHistoryActive){
+      previewHistoryActive = false;
+      previewOverlay.classList.remove('show');
+      previewConsolePanel.classList.remove('show');
+      previewMoreMenu.classList.remove('show');
+    }
+  });
+
+  function runPreview(){
+    var name = findHtmlToRun();
+    if(!name){ showToast('Create or open an HTML file first'); return; }
+    var compiled = compileConnectTags(files[name].content);
+    previewLabel.textContent = 'Preview \u2014 ' + name;
+    clearPreviewConsole();
+    previewConsolePanel.classList.remove('show');
+    if(cacheDisabled) hardResetPreviewFrame();
+    previewFrame.srcdoc = consoleHookScript + compiled;
+    showPreviewOverlay();
+  }
+
+  function openPreviewWithConsole(){
+    var wasOpen = previewOverlay.classList.contains('show');
+    if(!wasOpen) runPreview();
+    previewConsolePanel.classList.add('show');
+    previewConsoleDot.classList.remove('show');
+  }
+
+  function openPreviewInBrowser(){
+    var name = findHtmlToRun();
+    if(!name){ showToast('Create or open an HTML file first'); return; }
+    try{
+      var compiled = consoleHookScript + compileConnectTags(files[name].content);
+      var blob = new Blob([compiled], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+      var win = window.open(url, '_blank');
+      if(!win){ showToast('Allow pop-ups to open in browser'); }
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+    } catch(e){
+      showToast('Could not open in browser');
+    }
+  }
+
+  function setPreviewCheck(id, on){
+    var el = document.getElementById(id);
+    if(el) el.classList.toggle('checked', !!on);
+  }
+
+  function syncPreviewMenuChecks(){
+    setPreviewCheck('chkDevices', deviceMode);
+    setPreviewCheck('chkCache', cacheDisabled);
+    setPreviewCheck('chkConsole', previewConsolePanel.classList.contains('show'));
+  }
+
+  runBtn.addEventListener('click', runPreview);
+  document.getElementById('previewClose').addEventListener('click', hidePreviewOverlay);
+  document.getElementById('previewReload').addEventListener('click', runPreview);
+  document.getElementById('previewConsoleClear').addEventListener('click', clearPreviewConsole);
+
+  previewMoreBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    syncPreviewMenuChecks();
+    previewMoreMenu.classList.toggle('show');
+  });
+  document.addEventListener('click', function(e){
+    if(!previewMoreMenu.contains(e.target) && e.target.id !== 'previewMoreBtn'){
+      previewMoreMenu.classList.remove('show');
+    }
+  });
+  previewMoreMenu.addEventListener('click', function(e){
+    var item = e.target.closest('.popup-item');
+    if(!item) return;
+    var action = item.dataset.action;
+    if(action === 'devices'){
+      deviceMode = !deviceMode;
+      previewBody.classList.toggle('device-mode', deviceMode);
+      setPreviewCheck('chkDevices', deviceMode);
+      showToast('Device frame ' + (deviceMode ? 'on' : 'off'));
+    } else if(action === 'cache'){
+      cacheDisabled = !cacheDisabled;
+      setPreviewCheck('chkCache', cacheDisabled);
+      showToast('Cache ' + (cacheDisabled ? 'disabled' : 'enabled'));
+    } else if(action === 'consoletoggle'){
+      var showing = previewConsolePanel.classList.toggle('show');
+      if(showing) previewConsoleDot.classList.remove('show');
+      setPreviewCheck('chkConsole', showing);
+    } else if(action === 'openbrowser'){
+      previewMoreMenu.classList.remove('show');
+      openPreviewInBrowser();
+    } else if(action === 'exit'){
+      previewMoreMenu.classList.remove('show');
+      hidePreviewOverlay();
+    }
+  });
+
+  /* ============================================================
+     CONSOLE (messages posted from the preview iframe)
+     Shown only inside the preview overlay, behind its own icon —
+     never pops up on top of the main editor by itself.
+  ============================================================ */
+  window.addEventListener('message', function(e){
+    if(!e.data || !e.data.__console) return;
+    var line = document.createElement('div');
+    line.className = 'log-line' + (e.data.type === 'error' ? ' error' : (e.data.type === 'warn' ? ' warn' : ''));
+    line.textContent = e.data.args.join(' ');
+    previewConsoleBody.appendChild(line);
+    previewConsoleBody.scrollTop = previewConsoleBody.scrollHeight;
+    if(!previewConsolePanel.classList.contains('show')){
+      previewConsoleDot.classList.add('show');
+    }
+  });
+
+  /* ============================================================
+     TERMINAL PANEL (lightweight simulated commands, main editor)
+  ============================================================ */
+  var terminalPanel = document.getElementById('terminalPanel');
+  var terminalBody = document.getElementById('terminalBody');
+  var terminalInput = document.getElementById('terminalInput');
+
+  function toggleTerminal(){
+    terminalPanel.classList.toggle('show');
+    if(terminalPanel.classList.contains('show') && !terminalBody.childElementCount){
+      termPrint('Mini terminal ready. Type "help" for commands.');
+    }
+  }
+  document.getElementById('terminalClear').addEventListener('click', function(){ terminalBody.innerHTML = ''; });
+
+  function termPrint(text){
+    var line = document.createElement('div');
+    line.className = 'log-line';
+    line.textContent = text;
+    terminalBody.appendChild(line);
+    terminalBody.scrollTop = terminalBody.scrollHeight;
+  }
+
+  terminalInput.addEventListener('keydown', function(e){
+    if(e.key !== 'Enter') return;
+    var cmd = terminalInput.value.trim();
+    if(!cmd) return;
+    termPrint('> ' + cmd);
+    terminalInput.value = '';
+    var parts = cmd.split(' ');
+    var head = parts[0];
+    if(head === 'help'){
+      termPrint('Commands: help, ls, open <file>, run, clear, echo <text>');
+    } else if(head === 'ls'){
+      termPrint(Object.keys(files).join('  '));
+    } else if(head === 'open'){
+      var name = parts.slice(1).join(' ');
+      if(files[name]){ switchToFile(name); termPrint('Opened ' + name); }
+      else termPrint('No such file: ' + name);
+    } else if(head === 'run'){
+      runPreview();
+      termPrint('Running preview...');
+    } else if(head === 'clear'){
+      terminalBody.innerHTML = '';
+    } else if(head === 'echo'){
+      termPrint(parts.slice(1).join(' '));
+    } else {
+      termPrint(cmd + ': command not found');
+    }
+  });
+
+  /* ============================================================
+     FAB (scroll to top of editor)
+  ============================================================ */
+  document.getElementById('fab').addEventListener('click', function(){
+    codeInput.scrollTop = 0;
+    codeInput.focus();
+  });
+
+  /* ============================================================
+     KEYBOARD-AWARE VIEWPORT
+     Mobile browsers don't shrink 100vh when the on-screen keyboard
+     opens, so anything anchored to the bottom (the symbol toolbar,
+     bottom-sheet modals, the rename box) ends up hidden behind the
+     keyboard. window.visualViewport reports the real visible height,
+     so we resize #phone to match it: the layout shrinks to sit
+     exactly above the keyboard while it's open, and grows back to
+     full height the moment it closes.
+  ============================================================ */
+  var phoneEl = document.getElementById('phone');
+
+  function applyPhoneHeight(h){
+    phoneEl.style.height = h + 'px';
+  }
+
+  function initViewportHandling(){
+    if(window.visualViewport){
+      var vv = window.visualViewport;
+      var update = function(){
+        applyPhoneHeight(vv.height);
+        // Some browsers scroll the page slightly when the keyboard
+        // opens; keep the app pinned to the top of the viewport.
+        window.scrollTo(0, 0);
+      };
+      vv.addEventListener('resize', update);
+      vv.addEventListener('scroll', update);
+      update();
+    } else {
+      applyPhoneHeight(window.innerHeight);
+      window.addEventListener('resize', function(){ applyPhoneHeight(window.innerHeight); });
+    }
+  }
+
+  initViewportHandling();
+
+  window.addEventListener('resize', function(){
+    if(wordWrap) renderLineNumbers();
+  });
+  window.addEventListener('orientationchange', function(){
+    if(wordWrap) setTimeout(renderLineNumbers, 150);
+  });
+
+  /* ============================================================
+     INIT
+  ============================================================ */
+  loadState(function(){
+    renderAll();
+  });
+
+})();
+</script>
+</body>
+</html>
