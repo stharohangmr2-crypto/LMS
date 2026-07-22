@@ -731,53 +731,52 @@
       'script.js': {
         content: 'console.log("Hello from script.js");',
         type: 'js', dirty: false, saved: true
-      },
-      'untitled.html': {
-        content: defaultTemplate('html'),
-        type: 'html', dirty: false, saved: false
       }
     };
-    openTabs = ['untitled.html', 'index.html'];
+    // All three starter files are opened as tabs right away (nothing left
+    // hidden in the background). Previously an extra "untitled.html" sat
+    // in the file list without a visible tab, so a brand-new file renamed
+    // to that same name would hit a "already exists" collision with a file
+    // the user couldn't even see yet.
+    openTabs = ['index.html', 'style.css', 'script.js'];
     activeFile = 'index.html';
-    recentFiles = ['index.html', 'style.css', 'script.js', 'untitled.html'];
+    recentFiles = ['index.html', 'style.css', 'script.js'];
   }
 
   /* ============================================================
      PERSISTENCE
   ============================================================ */
+  // localStorage is synchronous and works in any real browser/webview this
+  // file is opened in (Acode preview, GitHub Pages, desktop/mobile Chrome).
+  // The previous version used window.storage, an API that only exists
+  // inside Claude.ai's own artifact preview sandbox — outside of that
+  // (i.e. everywhere this app is actually used) every call to it failed
+  // silently, so nothing was ever really saved and typed content vanished
+  // on the next reload.
   function persist(){
     var payload = { files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
     try {
-      window.storage.set(STORAGE_KEY, JSON.stringify(payload), false).catch(function(){});
-    } catch(e){ /* storage not available, continue silently */ }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch(e){ /* storage unavailable (e.g. private browsing) - continue silently */ }
   }
 
   function loadState(cb){
     try {
-      window.storage.get(STORAGE_KEY, false).then(function(res){
-        if(res && res.value){
-          try {
-            var data = JSON.parse(res.value);
-            if(data && data.files && Object.keys(data.files).length){
-              files = data.files;
-              openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
-              activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
-              recentFiles = data.recentFiles || [];
-              cb();
-              return;
-            }
-          } catch(e){ /* fall through to defaults */ }
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        var data = JSON.parse(raw);
+        if(data && data.files && Object.keys(data.files).length){
+          files = data.files;
+          openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
+          activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
+          recentFiles = data.recentFiles || [];
+          cb();
+          return;
         }
-        seedDefaults();
-        cb();
-      }).catch(function(){
-        seedDefaults();
-        cb();
-      });
-    } catch(e){
-      seedDefaults();
-      cb();
-    }
+      }
+    } catch(e){ /* fall through to defaults */ }
+    seedDefaults();
+    cb();
   }
 
   /* ============================================================
@@ -1118,6 +1117,26 @@
     return true;
   }
 
+  // Pushes a file out to the phone's real storage (Downloads folder, or
+  // the browser's own save dialog) via a throwaway link click - the
+  // standard way a plain web page triggers a download.
+  function downloadFileToDevice(name, content){
+    try {
+      var blob = new Blob([content], { type: 'text/plain' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
   function saveActive(){
     var f = files[activeFile];
     if(!f){ showToast('No file open'); return; }
@@ -1125,7 +1144,8 @@
     f.saved = true;
     renderAll();
     persist();
-    showToast('Saved ' + activeFile);
+    var downloaded = downloadFileToDevice(activeFile, f.content);
+    showToast(downloaded ? 'Downloaded ' + activeFile : 'Saved (download failed)');
   }
 
   function saveAs(newName){
