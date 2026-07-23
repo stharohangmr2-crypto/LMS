@@ -244,6 +244,36 @@
 <div id="app" class="relative"></div>
 <div id="toast-root" class="fixed bottom-8 left-1/2 z-[300]"></div>
 
+<script>
+(function() {
+  function showDebugError(msg) {
+    var el = document.getElementById('nimbus-debug-error');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'nimbus-debug-error';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:14px 16px;font:12px/1.5 monospace;white-space:pre-wrap;max-height:45vh;overflow:auto;';
+      var closeBtn = document.createElement('div');
+      closeBtn.textContent = '[tap here to close]';
+      closeBtn.style.cssText = 'text-align:right;opacity:0.8;margin-bottom:6px;';
+      closeBtn.onclick = function() { el.remove(); };
+      el.appendChild(closeBtn);
+      document.body.appendChild(el);
+    }
+    var line = document.createElement('div');
+    line.style.cssText = 'border-top:1px dashed rgba(255,255,255,0.3);padding-top:8px;margin-top:8px;';
+    line.textContent = msg;
+    el.appendChild(line);
+  }
+  window.addEventListener('error', function(e) {
+    showDebugError('ERROR: ' + e.message + '\nat ' + e.filename + ':' + e.lineno + ':' + e.colno);
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+    showDebugError('UNHANDLED PROMISE REJECTION: ' + reason);
+  });
+})();
+</script>
+
 <script type="module">
   // Firebase — powers cross-device cloud sync (assignments/students/submissions/
   // messages all live in Firestore now, not just localStorage) and Google sign-in.
@@ -515,6 +545,16 @@ function saveSeenMap(map) {
 function getSeenIds(studentId) { const map = getSeenMap(); return map[studentId] || []; }
 function markAllSeen(studentId) { const map = getSeenMap(); map[studentId] = getAssignments().map(a => a.id); saveSeenMap(map); }
 
+function removeStudent(studentId) {
+  saveStudents(getStudents().filter(s => s.id !== studentId));
+  saveSubmissions(getSubmissions().filter(s => s.studentId !== studentId));
+  saveMessages(getMessages().filter(m => m.studentId !== studentId));
+  const seenMap = getSeenMap();
+  if (studentId in seenMap) { delete seenMap[studentId]; saveSeenMap(seenMap); }
+  if (activeStudentDetailId === studentId) activeStudentDetailId = null;
+  if (activeReviewKey && activeReviewKey.studentId === studentId) activeReviewKey = null;
+}
+
 function getSession() { const raw = localStorage.getItem(STORAGE_KEYS.session); try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
 function setSession(s) { localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(s)); }
 function clearSession() { localStorage.removeItem(STORAGE_KEYS.session); }
@@ -725,7 +765,7 @@ function render() {
 // LOGIN / SIGNUP — dark ink cover, paper ledger card, ribbon bookmark
 // ============================================================
 function renderLogin() {
-  if (authMode === 'google-setup') return renderGoogleSetup();
+  if (authMode === 'google-setup' || authMode === 'signup') return renderSignupForm();
   return `
   <div class="min-h-screen w-full flex items-center justify-center px-4 py-10 relative overflow-hidden bg-ink">
     <div class="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-redline/10 blur-[110px]"></div>
@@ -791,8 +831,12 @@ function renderLogin() {
           Continue with Google
         </button>
 
+        <button type="button" id="direct-signup-btn" class="btn-press mt-3 w-full py-3.5 rounded-full font-semibold text-sm text-ink bg-transparent border-2 border-dashed border-ink/15 hover:border-ink/30 hover:bg-ink/[0.03] transition-all duration-300 flex items-center justify-center gap-2.5">
+          Create an account
+        </button>
+
         <div class="mt-6 pt-6 border-t border-dashed border-ink/15 text-center">
-          <p class="font-mono2 text-[10px] tracking-wide text-graphite/50 leading-relaxed">ADMIN ACCESS IS CREDENTIAL-GATED<br/>STUDENTS SIGN IN WITH GOOGLE TO GET AN ID</p>
+          <p class="font-mono2 text-[10px] tracking-wide text-graphite/50 leading-relaxed">ADMIN ACCESS IS CREDENTIAL-GATED<br/>NEW STUDENTS CAN SIGN UP DIRECTLY OR WITH GOOGLE</p>
         </div>
       </div>
     </div>
@@ -800,8 +844,10 @@ function renderLogin() {
   `;
 }
 
-function renderGoogleSetup() {
+function renderSignupForm() {
   const prefillName = (pendingGoogleUser && pendingGoogleUser.name) || '';
+  const prefillEmail = (pendingGoogleUser && pendingGoogleUser.email) || '';
+  const isGoogle = !!pendingGoogleUser;
   return `
   <div class="min-h-screen w-full flex items-center justify-center px-4 py-10 relative overflow-hidden bg-ink">
     <div class="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-redline/10 blur-[110px]"></div>
@@ -826,8 +872,8 @@ function renderGoogleSetup() {
         </button>
 
         <div class="mb-7">
-          <h2 class="font-display text-2xl text-ink font-semibold">Finish setting up</h2>
-          <p class="text-graphite text-sm mt-1.5">Choose an ID and password so you can sign back in later without Google too.</p>
+          <h2 class="font-display text-2xl text-ink font-semibold">${isGoogle ? 'Finish setting up' : 'Create your account'}</h2>
+          <p class="text-graphite text-sm mt-1.5">${isGoogle ? 'Choose an ID and password so you can sign back in later without Google too.' : 'Fill in your details to get started.'}</p>
         </div>
 
         <form id="signup-form" class="space-y-5" autocomplete="off">
@@ -840,7 +886,15 @@ function renderGoogleSetup() {
             </div>
           </div>
           <div>
-            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Choose an ID</label>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Email Address</label>
+            <div class="field-underline flex items-center gap-2.5 pb-2.5">
+              ${ic('userRound', 'w-4 h-4 text-graphite/50 shrink-0')}
+              <input required autocomplete="off" type="email" id="signup-email" value="${escapeHtml(prefillEmail)}" placeholder="e.g. simran@gmail.com"
+                class="flex-1 bg-transparent outline-none text-[15px] text-ink placeholder:text-graphite/40" />
+            </div>
+          </div>
+          <div>
+            <label class="font-mono2 text-[10px] tracking-[0.15em] uppercase text-graphite/80 mb-2 block">Choose a Username</label>
             <div class="field-underline flex items-center gap-2.5 pb-2.5">
               ${ic('pencil', 'w-4 h-4 text-graphite/50 shrink-0')}
               <input required autocomplete="off" type="text" id="signup-uid" placeholder="e.g. simran"
@@ -869,7 +923,7 @@ function renderGoogleSetup() {
           </p>
 
           <button type="submit" class="btn-press group w-full py-4 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-[0_15px_30px_-10px_rgba(0,0,0,0.45)]">
-            Continue <span class="transition-transform duration-300 group-hover:translate-x-1">${ic('arrowRight', 'w-4 h-4')}</span>
+            ${isGoogle ? 'Continue' : 'Create Account'} <span class="transition-transform duration-300 group-hover:translate-x-1">${ic('arrowRight', 'w-4 h-4')}</span>
           </button>
         </form>
 
@@ -1408,8 +1462,9 @@ function renderAdminStudents(session) {
       const progress = studentProgress(st.id);
       const unread = unreadFromStudent(st.id);
       return `
-      <button data-view-student="${st.id}" data-student-name="${escapeHtml((st.name + ' ' + st.id).toLowerCase())}" class="student-row relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover">
-        ${unread > 0 ? `<span class="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-redline pulse-dot"></span>` : ''}
+      <div data-view-student="${st.id}" data-student-name="${escapeHtml((st.name + ' ' + st.id).toLowerCase())}" class="student-row relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover cursor-pointer">
+        ${unread > 0 ? `<span class="absolute top-4 right-12 w-2.5 h-2.5 rounded-full bg-redline pulse-dot"></span>` : ''}
+        <button type="button" data-delete-student="${st.id}" title="Remove student" class="absolute top-3 right-3 w-7 h-7 rounded-full bg-papercard hover:bg-redline/10 flex items-center justify-center text-graphite/60 hover:text-redline transition-colors z-10">${ic('trash2', 'w-3.5 h-3.5')}</button>
         <div class="flex items-center gap-3 mb-4">
           <div class="w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">${escapeHtml(st.name.charAt(0).toUpperCase())}</div>
           <div class="min-w-0">
@@ -1421,7 +1476,7 @@ function renderAdminStudents(session) {
           <span class="text-graphite">${progress.checked + progress.submitted + progress.revision}/${progress.total} homework done</span>
           <span class="font-mono2 text-[10px] text-graphite/60 uppercase">Joined ${formatDate(st.joinedAt)}</span>
         </div>
-      </button>
+      </div>
       `;
     }).join('')}
   </div>
@@ -1473,7 +1528,10 @@ function mountStudentDetail(studentId) {
             <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite">ID: ${escapeHtml(student.id)} · Joined ${formatDate(student.joinedAt)}</p>
           </div>
         </div>
-        <button id="close-student-detail" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('x', 'w-5 h-5')}</button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="sd-delete-student" title="Remove student" class="w-9 h-9 rounded-full hover:bg-redline/10 flex items-center justify-center text-graphite hover:text-redline">${ic('trash2', 'w-4 h-4')}</button>
+          <button id="close-student-detail" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite">${ic('x', 'w-5 h-5')}</button>
+        </div>
       </div>
 
       <div class="flex items-center gap-1.5 px-6 sm:px-8 pt-4 shrink-0">
@@ -1536,6 +1594,22 @@ function mountStudentDetail(studentId) {
 
   document.getElementById('close-student-detail').addEventListener('click', closeStudentDetail);
   document.getElementById('sd-overlay').addEventListener('click', closeStudentDetail);
+
+  document.getElementById('sd-delete-student').addEventListener('click', () => {
+    showConfirm({
+      title: 'Remove this student?',
+      message: `"${student.name}" (ID: ${student.id}) will be permanently removed, along with their submissions and messages. This can't be undone.`,
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep it',
+      danger: true
+    }).then(ok => {
+      if (!ok) return;
+      removeStudent(studentId);
+      closeStudentDetail();
+      showToast('Removed ' + student.name.split(' ')[0] + '.');
+      render();
+    });
+  });
 
   wrapper.querySelectorAll('[data-sd-tab]').forEach(btn => {
     btn.addEventListener('click', () => { studentDetailTab = btn.dataset.sdTab; render(); });
@@ -3133,6 +3207,15 @@ function bindEvents() {
     render();
   });
 
+  const directSignupBtn = document.getElementById('direct-signup-btn');
+  if (directSignupBtn) {
+    directSignupBtn.addEventListener('click', () => {
+      pendingGoogleUser = null;
+      authMode = 'signup';
+      render();
+    });
+  }
+
   const googleBtn = document.getElementById('google-signin-btn');
   if (googleBtn) {
     googleBtn.addEventListener('click', () => {
@@ -3188,6 +3271,7 @@ function bindEvents() {
     signupForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const name = document.getElementById('signup-name').value.trim();
+      const email = document.getElementById('signup-email').value.trim();
       const uidRaw = document.getElementById('signup-uid').value.trim();
       const pw = document.getElementById('signup-password').value;
       const pw2 = document.getElementById('signup-password2').value;
@@ -3198,8 +3282,9 @@ function bindEvents() {
         errorEl.classList.add('flex');
       };
 
-      if (!pendingGoogleUser) { showError("Something went wrong — please sign in with Google again."); return; }
-      if (!name || !uidRaw || !pw || !pw2) { showError("Fill in every field to continue."); return; }
+      if (!name || !email || !uidRaw || !pw || !pw2) { showError("Fill in every field to continue."); return; }
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(email)) { showError("Enter a valid email address."); return; }
       const uid = uidRaw.toLowerCase().replace(/\s+/g, '');
       if (uid === ADMIN_ID) { showError("That ID is reserved. Pick another."); return; }
       if (findStudent(uid)) { showError("That ID is already taken. Pick another."); return; }
@@ -3212,9 +3297,9 @@ function bindEvents() {
         id: uid,
         password: pw,
         name,
-        email: pendingGoogleUser.email || null,
-        googleUid: pendingGoogleUser.uid,
-        authProvider: 'google',
+        email,
+        googleUid: pendingGoogleUser ? pendingGoogleUser.uid : null,
+        authProvider: pendingGoogleUser ? 'google' : 'password',
         joinedAt: Date.now()
       });
       saveStudents(students);
@@ -3439,10 +3524,32 @@ function bindEvents() {
   if (cancelEditBtn) cancelEditBtn.addEventListener('click', () => { editingAssignmentId = null; render(); });
 
   document.querySelectorAll('[data-view-student]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('[data-delete-student]')) return;
       activeStudentDetailId = btn.dataset.viewStudent;
       studentDetailTab = 'progress';
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-delete-student]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.deleteStudent;
+      const student = findStudent(id);
+      if (!student) return;
+      showConfirm({
+        title: 'Remove this student?',
+        message: `"${student.name}" (ID: ${student.id}) will be permanently removed, along with their submissions and messages. This can't be undone.`,
+        confirmLabel: 'Remove',
+        cancelLabel: 'Keep it',
+        danger: true
+      }).then(ok => {
+        if (!ok) return;
+        removeStudent(id);
+        showToast('Removed ' + student.name.split(' ')[0] + '.');
+        render();
+      });
     });
   });
 
