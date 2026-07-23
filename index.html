@@ -283,7 +283,7 @@
     GoogleAuthProvider, signInWithPopup, signOut
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
   import {
-    getFirestore, doc, onSnapshot, setDoc, runTransaction
+    getFirestore, doc, onSnapshot, setDoc, runTransaction, getDoc
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -354,6 +354,17 @@
           tx.set(cloudRef, { [field]: next }, { merge: true });
         });
       } catch (err) { console.error("Nimbus: cloud mutate failed for '" + field + "'", err); }
+    },
+    // One-off direct read straight from Firestore (bypasses the realtime
+    // listener entirely). Used for the dashboard's periodic "how many
+    // students are there right now" poll, as an independent double-check on
+    // top of the realtime subscription.
+    async fetchField(field, defaultValue) {
+      try {
+        const snap = await getDoc(cloudRef);
+        const data = snap.exists() ? snap.data() : null;
+        return data && data[field] !== undefined ? data[field] : defaultValue;
+      } catch (err) { console.error("Nimbus: cloud fetch failed for '" + field + "'", err); return null; }
     }
   };
 
@@ -518,12 +529,27 @@ function saveAssignments(mutatorFn) {
 
 function getStudents() {
   const raw = localStorage.getItem(STORAGE_KEYS.students);
-  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  let list;
+  try { list = raw ? JSON.parse(raw) : []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  // Defensive normalization: every card/profile/count below assumes a
+  // student has at least an id, a name, and a joinedAt. A record missing
+  // those (e.g. a partial write caught mid-sync) used to throw inside
+  // .map()/.charAt() and silently blank out the *entire* students list —
+  // not just that one card. Filling in safe defaults here means one bad
+  // record can never take the rest of the roster down with it.
+  return list
+    .filter(s => s && s.id)
+    .map(s => Object.assign({ name: 'Student', joinedAt: Date.now() }, s));
 }
 function saveStudents(mutatorFn) {
   return mutateCloudList(STORAGE_KEYS.students, 'students', [], mutatorFn);
 }
-function findStudent(id) { return getStudents().find(s => s.id === (id || '').toLowerCase()) || null; }
+function findStudent(id) {
+  const target = (id == null ? '' : String(id)).trim().toLowerCase();
+  if (!target) return null;
+  return getStudents().find(s => String(s.id).trim().toLowerCase() === target) || null;
+}
 
 function getSubmissions() {
   const raw = localStorage.getItem(STORAGE_KEYS.submissions);
@@ -1500,25 +1526,42 @@ function renderAdminStudents(session) {
   </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 anim-fade-up stagger-1">
     ${students.map(st => {
-      const progress = studentProgress(st.id);
-      const unread = unreadFromStudent(st.id);
-      return `
-      <div data-view-student="${st.id}" data-student-name="${escapeHtml((st.name + ' ' + st.id).toLowerCase())}" class="student-row relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover cursor-pointer">
-        ${unread > 0 ? `<span class="absolute top-4 right-12 w-2.5 h-2.5 rounded-full bg-redline pulse-dot"></span>` : ''}
-        <button type="button" data-delete-student="${st.id}" title="Remove student" class="absolute top-3 right-3 w-7 h-7 rounded-full bg-papercard hover:bg-redline/10 flex items-center justify-center text-graphite/60 hover:text-redline transition-colors z-10">${ic('trash2', 'w-3.5 h-3.5')}</button>
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">${escapeHtml(st.name.charAt(0).toUpperCase())}</div>
-          <div class="min-w-0">
-            <p class="font-semibold text-ink text-sm truncate">${escapeHtml(st.name)}</p>
-            <p class="font-mono2 text-[10px] text-graphite/70 mt-0.5">ID: ${escapeHtml(st.id)}</p>
+      try {
+        const progress = studentProgress(st.id);
+        const unread = unreadFromStudent(st.id);
+        const safeName = (st.name && String(st.name).trim()) ? String(st.name) : 'Student';
+        return `
+        <div data-view-student="${escapeHtml(st.id)}" data-student-name="${escapeHtml((safeName + ' ' + st.id).toLowerCase())}" class="student-row relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover cursor-pointer">
+          ${unread > 0 ? `<span class="absolute top-4 right-12 w-2.5 h-2.5 rounded-full bg-redline pulse-dot"></span>` : ''}
+          <button type="button" data-delete-student="${escapeHtml(st.id)}" title="Remove student" class="absolute top-3 right-3 w-7 h-7 rounded-full bg-papercard hover:bg-redline/10 flex items-center justify-center text-graphite/60 hover:text-redline transition-colors z-10">${ic('trash2', 'w-3.5 h-3.5')}</button>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">${escapeHtml(safeName.charAt(0).toUpperCase())}</div>
+            <div class="min-w-0">
+              <p class="font-semibold text-ink text-sm truncate">${escapeHtml(safeName)}</p>
+              <p class="font-mono2 text-[10px] text-graphite/70 mt-0.5">ID: ${escapeHtml(st.id)}</p>
+            </div>
           </div>
-        </div>
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-graphite">${progress.checked + progress.submitted + progress.revision}/${progress.total} homework done</span>
-          <span class="font-mono2 text-[10px] text-graphite/60 uppercase">Joined ${formatDate(st.joinedAt)}</span>
-        </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-graphite">${progress.checked + progress.submitted + progress.revision}/${progress.total} homework done</span>
+            <span class="font-mono2 text-[10px] text-graphite/60 uppercase">Joined ${formatDate(st.joinedAt)}</span>
+          </div>
       </div>
       `;
+      } catch (err) {
+        console.error('Nimbus: a student card failed to render, showing fallback card', err);
+        const fallbackId = (st && st.id) ? st.id : '';
+        return `
+        <div data-view-student="${escapeHtml(fallbackId)}" class="student-row relative text-left bg-papercard rounded-2xl border border-ink/8 p-5 card-hover cursor-pointer">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center font-semibold text-sm shrink-0">?</div>
+            <div class="min-w-0">
+              <p class="font-semibold text-ink text-sm truncate">Student</p>
+              <p class="font-mono2 text-[10px] text-graphite/70 mt-0.5">ID: ${escapeHtml(fallbackId)}</p>
+            </div>
+          </div>
+        </div>
+        `;
+      }
     }).join('')}
   </div>
   `}
@@ -1550,8 +1593,63 @@ function mountStudentDetail(studentId) {
   const existing = document.getElementById('student-detail-root');
   if (existing) existing.remove();
   const student = findStudent(studentId);
-  if (!student) { activeStudentDetailId = null; return; }
+  if (!student) {
+    // The roster hasn't caught up yet (e.g. this device is still syncing
+    // from the cloud) — rather than silently doing nothing, show a small
+    // placeholder immediately and keep retrying instead of leaving the
+    // person wondering if their click even registered.
+    mountStudentDetailFallback(studentId);
+    return;
+  }
+  try {
+    mountStudentDetailInner(studentId, student);
+  } catch (err) {
+    console.error('Nimbus: student profile failed to render, showing fallback', err);
+    mountStudentDetailFallback(studentId, student);
+  }
+}
 
+// Always-visible placeholder: guarantees a panel opens no matter what shape
+// the underlying data is in. Retries on its own every couple seconds in case
+// this was just a sync timing issue, and offers a manual retry too.
+let studentDetailRetryTimer = null;
+function mountStudentDetailFallback(studentId, partialStudent) {
+  const existing = document.getElementById('student-detail-root');
+  if (existing) existing.remove();
+  clearTimeout(studentDetailRetryTimer);
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'student-detail-root';
+  const label = (partialStudent && partialStudent.name) ? partialStudent.name : 'This student';
+  wrapper.innerHTML = `
+    <div id="sd-overlay" class="workspace-overlay fixed inset-0 bg-ink/50 backdrop-blur-sm z-[60]"></div>
+    <div id="sd-panel" class="workspace-panel fixed top-0 right-0 h-screen w-full lg:w-[640px] bg-papercard z-[70] shadow-2xl flex flex-col items-center justify-center px-8 text-center gap-3">
+      <div class="w-10 h-10 rounded-full border-2 border-ink/15 border-t-ink/60 animate-spin"></div>
+      <p class="font-semibold text-ink text-sm">Loading ${escapeHtml(label)}'s profile…</p>
+      <p class="text-xs text-graphite max-w-xs">Still syncing this student's details. This will fill in automatically — or tap retry.</p>
+      <div class="flex items-center gap-2 mt-2">
+        <button id="sd-fallback-retry" class="btn-press font-mono2 text-[10px] uppercase tracking-wide font-semibold text-paper bg-ink rounded-full px-4 py-2">Retry Now</button>
+        <button id="sd-fallback-close" class="btn-press font-mono2 text-[10px] uppercase tracking-wide font-semibold text-graphite bg-ink/5 rounded-full px-4 py-2">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrapper);
+  requestAnimationFrame(() => {
+    document.getElementById('sd-overlay').classList.add('open');
+    document.getElementById('sd-panel').classList.add('open');
+  });
+  document.getElementById('sd-overlay').addEventListener('click', closeStudentDetail);
+  document.getElementById('sd-fallback-close').addEventListener('click', closeStudentDetail);
+  document.getElementById('sd-fallback-retry').addEventListener('click', () => mountStudentDetail(studentId));
+  // Auto-retry a few times in case this is just normal sync lag.
+  studentDetailRetryTimer = setTimeout(() => {
+    if (activeStudentDetailId === studentId && document.getElementById('student-detail-root')) {
+      mountStudentDetail(studentId);
+    }
+  }, 2500);
+}
+
+function mountStudentDetailInner(studentId, student) {
   const assignments = getAssignments().slice().sort((a, b) => b.createdAt - a.createdAt);
   const progress = studentProgress(studentId);
 
@@ -1684,6 +1782,7 @@ function closeStudentDetail() {
   if (overlay) overlay.classList.remove('open');
   if (panel) panel.classList.remove('open');
   activeStudentDetailId = null;
+  clearTimeout(studentDetailRetryTimer);
   setTimeout(() => { const el = document.getElementById('student-detail-root'); if (el) el.remove(); }, 460);
 }
 
@@ -3754,6 +3853,30 @@ function startCloudSync() {
 
 if (window.nimbusCloud) startCloudSync();
 else window.addEventListener('nimbus-firebase-ready', startCloudSync);
+
+// Silent dashboard poll: every 10 seconds, while the admin is actually
+// looking at the dashboard, ask Firebase directly (not the cached realtime
+// listener) how many students exist right now. This is a belt-and-braces
+// double-check on top of the realtime subscription above — if it turns out
+// nothing changed, it does nothing at all (no re-render, no flicker); it
+// only updates the page when the count actually differs from what's shown.
+let dashboardPollTimer = null;
+async function pollDashboardStudentCount() {
+  if (currentRoute !== 'admin' || adminNav !== 'dashboard') return;
+  if (!window.nimbusCloud) return;
+  const students = await window.nimbusCloud.fetchField('students', null);
+  if (!Array.isArray(students)) return; // offline or read failed this cycle — leave things as they are
+  const incoming = JSON.stringify(students);
+  const current = localStorage.getItem(STORAGE_KEYS.students);
+  if (incoming === current) return; // nothing changed — stay silent, no re-render
+  localStorage.setItem(STORAGE_KEYS.students, incoming);
+  if (currentRoute === 'admin' && adminNav === 'dashboard') render();
+}
+function startDashboardPolling() {
+  if (dashboardPollTimer) return;
+  dashboardPollTimer = setInterval(pollDashboardStudentCount, 10000);
+}
+startDashboardPolling();
 
 // ============================================================
 // INIT
