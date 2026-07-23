@@ -283,7 +283,7 @@
     GoogleAuthProvider, signInWithPopup, signOut
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
   import {
-    getFirestore, doc, onSnapshot, setDoc
+    getFirestore, doc, onSnapshot, setDoc, runTransaction
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -334,6 +334,26 @@
     async push(field, value) {
       try { await setDoc(cloudRef, { [field]: value }, { merge: true }); }
       catch (err) { console.error("Nimbus: cloud write failed for '" + field + "'", err); }
+    },
+    // Re-applies `mutatorFn` to whatever is actually on the server right now,
+    // inside a transaction, and writes the result back. This is what push()
+    // above can't guarantee: if two devices (e.g. two students submitting
+    // homework, or two signing up) write to the same field within moments of
+    // each other, a plain setDoc from each device would each be based on its
+    // own possibly-stale local copy, and whichever one saves last silently
+    // wipes out the other's change. Firestore's transaction retries the read
+    // + write together if it detects a conflicting write in between, so the
+    // mutation is always applied on top of the latest true server state.
+    async mutate(field, mutatorFn, defaultValue) {
+      try {
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(cloudRef);
+          const data = snap.exists() ? snap.data() : {};
+          const base = data[field] !== undefined ? data[field] : defaultValue;
+          const next = mutatorFn(base);
+          tx.set(cloudRef, { [field]: next }, { merge: true });
+        });
+      } catch (err) { console.error("Nimbus: cloud mutate failed for '" + field + "'", err); }
     }
   };
 
@@ -473,18 +493,35 @@ function getAssignments() {
   if (!raw) { const seed = seedAssignments(); localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(seed)); return seed; }
   try { return JSON.parse(raw); } catch (e) { return seedAssignments(); }
 }
-function saveAssignments(list) {
-  localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(list));
-  if (window.nimbusCloud) window.nimbusCloud.push('assignments', list);
+// Applies `mutatorFn` (oldValue => newValue) to the local cache immediately,
+// for a snappy UI, AND asks the cloud layer to re-run that exact same
+// mutation against whatever is actually on the server (see nimbusCloud.mutate
+// above). Passing a function instead of a precomputed array/object is what
+// makes this safe when two devices/tabs write around the same time — e.g.
+// two students submitting homework seconds apart, or a delete on one screen
+// overlapping a message on another. Whoever's *local* copy was momentarily
+// stale no longer matters, because the cloud re-derives the result from the
+// live server data rather than trusting a stale full snapshot pushed on top.
+function mutateCloudList(storageKey, cloudField, defaultValue, mutatorFn) {
+  let current;
+  try { current = JSON.parse(localStorage.getItem(storageKey)); } catch (e) { current = null; }
+  if (current == null) current = defaultValue;
+  const updated = mutatorFn(current);
+  localStorage.setItem(storageKey, JSON.stringify(updated));
+  if (window.nimbusCloud) window.nimbusCloud.mutate(cloudField, mutatorFn, defaultValue);
+  return updated;
+}
+
+function saveAssignments(mutatorFn) {
+  return mutateCloudList(STORAGE_KEYS.assignments, 'assignments', [], mutatorFn);
 }
 
 function getStudents() {
   const raw = localStorage.getItem(STORAGE_KEYS.students);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveStudents(list) {
-  localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(list));
-  if (window.nimbusCloud) window.nimbusCloud.push('students', list);
+function saveStudents(mutatorFn) {
+  return mutateCloudList(STORAGE_KEYS.students, 'students', [], mutatorFn);
 }
 function findStudent(id) { return getStudents().find(s => s.id === (id || '').toLowerCase()) || null; }
 
@@ -492,65 +529,69 @@ function getSubmissions() {
   const raw = localStorage.getItem(STORAGE_KEYS.submissions);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveSubmissions(list) {
-  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(list));
-  if (window.nimbusCloud) window.nimbusCloud.push('submissions', list);
+function saveSubmissions(mutatorFn) {
+  return mutateCloudList(STORAGE_KEYS.submissions, 'submissions', [], mutatorFn);
 }
 function getSubmission(assignmentId, studentId) {
   return getSubmissions().find(s => s.assignmentId === assignmentId && s.studentId === studentId) || null;
 }
 function upsertSubmission(assignmentId, studentId, patch) {
-  const list = getSubmissions();
-  const idx = list.findIndex(s => s.assignmentId === assignmentId && s.studentId === studentId);
-  if (idx > -1) { list[idx] = Object.assign({}, list[idx], patch); }
-  else { list.push(Object.assign({ id: 'sub_' + assignmentId + '_' + studentId, assignmentId, studentId }, patch)); }
-  saveSubmissions(list);
+  saveSubmissions(list => {
+    const next = list.slice();
+    const idx = next.findIndex(s => s.assignmentId === assignmentId && s.studentId === studentId);
+    if (idx > -1) { next[idx] = Object.assign({}, next[idx], patch); }
+    else { next.push(Object.assign({ id: 'sub_' + assignmentId + '_' + studentId, assignmentId, studentId }, patch)); }
+    return next;
+  });
 }
 
 function getMessages() {
   const raw = localStorage.getItem(STORAGE_KEYS.messages);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-function saveMessages(list) {
-  localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(list));
-  if (window.nimbusCloud) window.nimbusCloud.push('messages', list);
+function saveMessages(mutatorFn) {
+  return mutateCloudList(STORAGE_KEYS.messages, 'messages', [], mutatorFn);
 }
 function getThread(studentId) { return getMessages().filter(m => m.studentId === studentId).sort((a, b) => a.ts - b.ts); }
 function sendMessage(studentId, sender, text) {
-  const list = getMessages();
-  list.push({ id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), studentId, sender, text, ts: Date.now(), readByAdmin: sender === 'admin', readByStudent: sender === 'learner' });
-  saveMessages(list);
+  const newMsg = { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), studentId, sender, text, ts: Date.now(), readByAdmin: sender === 'admin', readByStudent: sender === 'learner' };
+  saveMessages(list => list.concat([newMsg]));
 }
 function unreadFromStudent(studentId) { return getThread(studentId).filter(m => m.sender === 'learner' && !m.readByAdmin).length; }
 function unreadFromAdminTotal() { return getStudents().reduce((sum, s) => sum + unreadFromStudent(s.id), 0); }
 function unreadFromAdmin(studentId) { return getThread(studentId).filter(m => m.sender === 'admin' && !m.readByStudent).length; }
 function markThreadRead(studentId, asRole) {
-  const list = getMessages();
-  list.forEach(m => {
-    if (m.studentId !== studentId) return;
-    if (asRole === 'admin' && m.sender === 'learner') m.readByAdmin = true;
-    if (asRole === 'learner' && m.sender === 'admin') m.readByStudent = true;
-  });
-  saveMessages(list);
+  saveMessages(list => list.map(m => {
+    if (m.studentId !== studentId) return m;
+    if (asRole === 'admin' && m.sender === 'learner' && !m.readByAdmin) return Object.assign({}, m, { readByAdmin: true });
+    if (asRole === 'learner' && m.sender === 'admin' && !m.readByStudent) return Object.assign({}, m, { readByStudent: true });
+    return m;
+  }));
 }
 
 function getSeenMap() {
   const raw = localStorage.getItem(STORAGE_KEYS.seen);
   try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
 }
-function saveSeenMap(map) {
-  localStorage.setItem(STORAGE_KEYS.seen, JSON.stringify(map));
-  if (window.nimbusCloud) window.nimbusCloud.push('seen', map);
+function saveSeenMap(mutatorFn) {
+  return mutateCloudList(STORAGE_KEYS.seen, 'seen', {}, mutatorFn);
 }
 function getSeenIds(studentId) { const map = getSeenMap(); return map[studentId] || []; }
-function markAllSeen(studentId) { const map = getSeenMap(); map[studentId] = getAssignments().map(a => a.id); saveSeenMap(map); }
+function markAllSeen(studentId) {
+  const ids = getAssignments().map(a => a.id);
+  saveSeenMap(map => Object.assign({}, map, { [studentId]: ids }));
+}
 
 function removeStudent(studentId) {
-  saveStudents(getStudents().filter(s => s.id !== studentId));
-  saveSubmissions(getSubmissions().filter(s => s.studentId !== studentId));
-  saveMessages(getMessages().filter(m => m.studentId !== studentId));
-  const seenMap = getSeenMap();
-  if (studentId in seenMap) { delete seenMap[studentId]; saveSeenMap(seenMap); }
+  saveStudents(list => list.filter(s => s.id !== studentId));
+  saveSubmissions(list => list.filter(s => s.studentId !== studentId));
+  saveMessages(list => list.filter(m => m.studentId !== studentId));
+  saveSeenMap(map => {
+    if (!(studentId in map)) return map;
+    const next = Object.assign({}, map);
+    delete next[studentId];
+    return next;
+  });
   if (activeStudentDetailId === studentId) activeStudentDetailId = null;
   if (activeReviewKey && activeReviewKey.studentId === studentId) activeReviewKey = null;
 }
@@ -3292,8 +3333,7 @@ function bindEvents() {
       if (pw !== pw2) { showError("Passwords don't match."); return; }
       errorEl.classList.add('hidden');
 
-      const students = getStudents();
-      students.push({
+      const newStudent = {
         id: uid,
         password: pw,
         name,
@@ -3301,8 +3341,8 @@ function bindEvents() {
         googleUid: pendingGoogleUser ? pendingGoogleUser.uid : null,
         authProvider: pendingGoogleUser ? 'google' : 'password',
         joinedAt: Date.now()
-      });
-      saveStudents(students);
+      };
+      saveStudents(list => list.concat([newStudent]));
       setSession({ role: 'learner', id: uid, name });
       bannerDismissed = false;
       authMode = 'login';
@@ -3420,29 +3460,30 @@ function bindEvents() {
         if (mcqQuestions.length === 0) { showToast('Add at least one question.'); return; }
       }
 
-      const list = getAssignments();
-
       if (editingAssignmentId) {
-        const idx = list.findIndex(a => a.id === editingAssignmentId);
-        if (idx > -1) {
-          const patch = { title, description, objectives, type: format, dueAt };
-          if (format === 'code') {
-            patch.codeLang = document.getElementById('hw-lang').value;
-            patch.starter = document.getElementById('hw-starter').value;
-            patch.mcqQuestions = undefined;
-          } else if (format === 'mcq') {
-            patch.mcqQuestions = mcqQuestions;
-            patch.codeLang = undefined;
-            patch.starter = undefined;
-          } else {
-            patch.codeLang = undefined;
-            patch.starter = undefined;
-            patch.mcqQuestions = undefined;
-          }
-          list[idx] = Object.assign({}, list[idx], patch);
-          saveAssignments(list);
-          showToast('Homework updated!');
+        const patch = { title, description, objectives, type: format, dueAt };
+        if (format === 'code') {
+          patch.codeLang = document.getElementById('hw-lang').value;
+          patch.starter = document.getElementById('hw-starter').value;
+          patch.mcqQuestions = undefined;
+        } else if (format === 'mcq') {
+          patch.mcqQuestions = mcqQuestions;
+          patch.codeLang = undefined;
+          patch.starter = undefined;
+        } else {
+          patch.codeLang = undefined;
+          patch.starter = undefined;
+          patch.mcqQuestions = undefined;
         }
+        const editId = editingAssignmentId;
+        saveAssignments(list => {
+          const idx = list.findIndex(a => a.id === editId);
+          if (idx === -1) return list;
+          const next = list.slice();
+          next[idx] = Object.assign({}, next[idx], patch);
+          return next;
+        });
+        showToast('Homework updated!');
         editingAssignmentId = null;
       } else {
         const newAssignment = { id: 'hw_' + Date.now(), title, description, objectives, type: format, dueAt, createdAt: Date.now() };
@@ -3452,8 +3493,7 @@ function bindEvents() {
         } else if (format === 'mcq') {
           newAssignment.mcqQuestions = mcqQuestions;
         }
-        list.push(newAssignment);
-        saveAssignments(list);
+        saveAssignments(list => list.concat([newAssignment]));
         showToast('Homework assigned to class!');
       }
 
@@ -3511,8 +3551,8 @@ function bindEvents() {
         danger: true
       }).then(ok => {
         if (!ok) return;
-        saveAssignments(getAssignments().filter(a => a.id !== id));
-        saveSubmissions(getSubmissions().filter(s => s.assignmentId !== id));
+        saveAssignments(list => list.filter(a => a.id !== id));
+        saveSubmissions(list => list.filter(s => s.assignmentId !== id));
         if (editingAssignmentId === id) editingAssignmentId = null;
         showToast('Homework deleted.');
         render();
