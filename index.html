@@ -465,6 +465,19 @@ function mcqRowHTML(prefill) {
 // ============================================================
 // STORAGE / DATA MODEL
 // ============================================================
+// A stringify that sorts object keys first. Firestore doesn't guarantee it
+// hands data back with fields in the exact same order they were written in,
+// so comparing raw JSON.stringify output against our own locally-written
+// string can spuriously report "changed" for data that's actually identical
+// — which was causing every message/action to trigger a needless full
+// re-render moments after it was sent (the cloud echoing our own write back).
+function stableStringify(value) {
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
 const STORAGE_KEYS = {
   assignments: 'nimbus_assignments',
   session: 'nimbus_session',
@@ -3883,16 +3896,44 @@ function applyCloudData(data) {
     messages: STORAGE_KEYS.messages,
     seen: STORAGE_KEYS.seen
   };
-  let changed = false;
+  const changedFields = [];
+  let previousMessages = null;
   Object.keys(map).forEach((field) => {
     if (data[field] === undefined) return;
-    const incoming = JSON.stringify(data[field]);
-    const current = localStorage.getItem(map[field]);
-    if (incoming === current) return; // identical — this is just Firestore echoing our own write back
-    localStorage.setItem(map[field], incoming);
-    changed = true;
+    let currentParsed;
+    try { currentParsed = JSON.parse(localStorage.getItem(map[field])); } catch (e) { currentParsed = undefined; }
+    if (stableStringify(data[field]) === stableStringify(currentParsed)) return; // identical — just Firestore echoing our own write back
+    if (field === 'messages') previousMessages = Array.isArray(currentParsed) ? currentParsed : [];
+    localStorage.setItem(map[field], JSON.stringify(data[field]));
+    changedFields.push(field);
   });
-  if (changed) render();
+  if (changedFields.length === 0) return;
+
+  // If messages were the ONLY thing that changed, and the relevant chat
+  // thread is already open on screen, just append the new bubble(s) — a
+  // full render() here would replay the panel's slide-in animation and
+  // reset its scroll every time the other person replies.
+  if (changedFields.length === 1 && changedFields[0] === 'messages') {
+    const session = getSession();
+    const prevIds = new Set(previousMessages.map(m => m && m.id));
+    if (session && session.role === 'admin' && activeStudentDetailId && studentDetailTab === 'chat' && document.getElementById('sd-chat-scroll')) {
+      const added = data.messages.filter(m => m && m.studentId === activeStudentDetailId && !prevIds.has(m.id));
+      if (added.length > 0) {
+        added.forEach(m => appendChatBubble('sd-chat-scroll', m.sender === 'admin', m.text, m.ts));
+        markThreadRead(activeStudentDetailId, 'admin');
+        return;
+      }
+    } else if (session && session.role === 'learner' && learnerNav === 'notification' && document.getElementById('ln-chat-scroll')) {
+      const added = data.messages.filter(m => m && m.studentId === session.id && !prevIds.has(m.id));
+      if (added.length > 0) {
+        added.forEach(m => appendChatBubble('ln-chat-scroll', m.sender === 'learner', m.text, m.ts));
+        markThreadRead(session.id, 'learner');
+        return;
+      }
+    }
+  }
+
+  render();
 }
 
 function startCloudSync() {
@@ -3931,10 +3972,10 @@ async function pollDashboardStudentCount() {
   if (!window.nimbusCloud) return;
   const students = await window.nimbusCloud.fetchField('students', null);
   if (!Array.isArray(students)) return; // offline or read failed this cycle — leave things as they are
-  const incoming = JSON.stringify(students);
-  const current = localStorage.getItem(STORAGE_KEYS.students);
-  if (incoming === current) return; // nothing changed — stay silent, no re-render
-  localStorage.setItem(STORAGE_KEYS.students, incoming);
+  let currentParsed;
+  try { currentParsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.students)); } catch (e) { currentParsed = undefined; }
+  if (stableStringify(students) === stableStringify(currentParsed)) return; // nothing changed — stay silent, no re-render
+  localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(students));
   if (currentRoute === 'admin' && adminNav === 'dashboard') render();
 }
 function startDashboardPolling() {
