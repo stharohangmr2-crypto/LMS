@@ -553,7 +553,10 @@ function findStudent(id) {
 
 function getSubmissions() {
   const raw = localStorage.getItem(STORAGE_KEYS.submissions);
-  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  let list;
+  try { list = raw ? JSON.parse(raw) : []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  return list.filter(s => s && s.assignmentId && s.studentId);
 }
 function saveSubmissions(mutatorFn) {
   return mutateCloudList(STORAGE_KEYS.submissions, 'submissions', [], mutatorFn);
@@ -573,7 +576,12 @@ function upsertSubmission(assignmentId, studentId, patch) {
 
 function getMessages() {
   const raw = localStorage.getItem(STORAGE_KEYS.messages);
-  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  let list;
+  try { list = raw ? JSON.parse(raw) : []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  return list
+    .filter(m => m && m.studentId)
+    .map(m => Object.assign({ sender: 'learner', text: '', ts: Date.now(), readByAdmin: false, readByStudent: false }, m));
 }
 function saveMessages(mutatorFn) {
   return mutateCloudList(STORAGE_KEYS.messages, 'messages', [], mutatorFn);
@@ -1197,7 +1205,11 @@ function renderAdminDashboard(session) {
   return `
   ${adminPageHeader('Good to see you, ' + escapeHtml((session?.name || 'Admin').split(' ')[0]), "Here's what's happening across your class this week.")}
 
-  <div class="grid grid-cols-3 gap-3 sm:gap-4 mb-8 anim-fade-up stagger-1">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8 anim-fade-up stagger-1">
+    <div class="bg-papercard rounded-2xl border border-ink/8 p-4 sm:p-5 card-hover">
+      <p class="text-3xl sm:text-4xl font-display font-semibold text-ink">${students.length}</p>
+      <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite mt-1 leading-snug">Total students</p>
+    </div>
     <div class="bg-papercard rounded-2xl border border-ink/8 p-4 sm:p-5 card-hover">
       <p class="text-3xl sm:text-4xl font-display font-semibold text-ink">${studentsThisMonth}</p>
       <p class="font-mono2 text-[10px] tracking-wide uppercase text-graphite mt-1 leading-snug">Students joined this month</p>
