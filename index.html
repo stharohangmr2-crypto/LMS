@@ -590,6 +590,7 @@ function getThread(studentId) { return getMessages().filter(m => m.studentId ===
 function sendMessage(studentId, sender, text) {
   const newMsg = { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), studentId, sender, text, ts: Date.now(), readByAdmin: sender === 'admin', readByStudent: sender === 'learner' };
   saveMessages(list => list.concat([newMsg]));
+  return newMsg;
 }
 function unreadFromStudent(studentId) { return getThread(studentId).filter(m => m.sender === 'learner' && !m.readByAdmin).length; }
 function unreadFromAdminTotal() { return getStudents().reduce((sum, s) => sum + unreadFromStudent(s.id), 0); }
@@ -736,6 +737,36 @@ function showToast(message) {
 function notifyBrowser(title, body) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try { new Notification(title, { body, icon: undefined }); } catch (e) {}
+}
+
+// Removes just the deleted homework's card(s) from whichever admin page is
+// currently showing them, with a quick fade/collapse — instead of calling
+// render(), which regenerates the whole page and replays its entrance
+// animation (that full-page fade/slide is what reads as "the page
+// refreshed"). Falls back to a full render() only if that was the very last
+// card, so the proper empty-state message can take over.
+function removeAssignmentCardFromDOM(id) {
+  const cards = document.querySelectorAll(`[data-assignment-card="${id}"]`);
+  if (cards.length === 0) return;
+  cards.forEach(card => {
+    const container = card.parentElement;
+    card.style.overflow = 'hidden';
+    card.style.maxHeight = card.offsetHeight + 'px';
+    card.style.transition = 'opacity 0.22s ease, transform 0.22s ease, max-height 0.28s ease 0.05s, margin 0.28s ease 0.05s, padding 0.28s ease 0.05s';
+    requestAnimationFrame(() => {
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(6px)';
+      card.style.maxHeight = '0px';
+      card.style.marginTop = '0px';
+      card.style.marginBottom = '0px';
+      card.style.paddingTop = '0px';
+      card.style.paddingBottom = '0px';
+    });
+    setTimeout(() => {
+      card.remove();
+      if (container && container.children.length === 0) render();
+    }, 330);
+  });
 }
 function notificationsEnabled() { return typeof Notification !== 'undefined' && Notification.permission === 'granted'; }
 function requestNotificationPermission() {
@@ -1419,7 +1450,7 @@ function renderAdminCreate(session) {
             <p class="text-sm text-graphite">No homework published yet. Create one to get started.</p>
           </div>
         ` : assignments.map(a => `
-          <div class="relative bg-papercard rounded-2xl border border-dashed border-ink/20 p-5 pt-6 card-hover flex items-start justify-between gap-4">
+          <div data-assignment-card="${escapeHtml(a.id)}" class="relative bg-papercard rounded-2xl border border-dashed border-ink/20 p-5 pt-6 card-hover flex items-start justify-between gap-4">
             ${notch()}
             <div class="min-w-0">
               <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -1476,7 +1507,7 @@ function renderAdminTasks(session) {
       const rows = students.map(st => ({ student: st, sub: getSubmission(a.id, st.id) }));
       const doneCount = rows.filter(r => r.sub).length;
       return `
-      <div data-task-title="${escapeHtml(a.title.toLowerCase())}" class="task-row bg-papercard rounded-2xl border border-ink/8 shadow-sm overflow-hidden">
+      <div data-task-title="${escapeHtml(a.title.toLowerCase())}" data-assignment-card="${escapeHtml(a.id)}" class="task-row bg-papercard rounded-2xl border border-ink/8 shadow-sm overflow-hidden">
         <div data-toggle-task="${a.id}" class="task-toggle w-full flex items-center justify-between gap-4 p-5 text-left cursor-pointer">
           <div class="min-w-0 flex items-center gap-3">
             <div class="w-9 h-9 rounded-full bg-ink/5 flex items-center justify-center shrink-0">${ic(a.type === 'code' ? 'code' : a.type === 'mcq' ? 'listChecks' : 'fileText', 'w-4 h-4 text-ink/60')}</div>
@@ -1583,22 +1614,37 @@ function renderAdminStudents(session) {
 // ============================================================
 // STUDENT DETAIL OVERLAY (admin) — profile, progress, chat
 // ============================================================
+function chatBubbleHtml(mine, text, ts) {
+  return `
+    <div class="flex ${mine ? 'justify-end' : 'justify-start'}">
+      <div class="max-w-[80%]">
+        <div class="${mine ? 'chat-bubble-out bg-ink text-paper' : 'chat-bubble-in bg-paper/70 text-ink border border-ink/10'} rounded-2xl px-4 py-2.5 text-sm leading-snug">${escapeHtml(text)}</div>
+        <p class="font-mono2 text-[9px] text-graphite/50 mt-1 ${mine ? 'text-right' : 'text-left'}">${formatDateTime(ts)}</p>
+      </div>
+    </div>
+    `;
+}
 function chatThreadHtml(studentId, forRole) {
   const thread = getThread(studentId);
   if (thread.length === 0) {
     return `<div class="flex-1 flex items-center justify-center py-10"><p class="text-xs text-graphite/60 italic">No messages yet. Say hello.</p></div>`;
   }
-  return thread.map(m => {
-    const mine = m.sender === forRole;
-    return `
-    <div class="flex ${mine ? 'justify-end' : 'justify-start'}">
-      <div class="max-w-[80%]">
-        <div class="${mine ? 'chat-bubble-out bg-ink text-paper' : 'chat-bubble-in bg-paper/70 text-ink border border-ink/10'} rounded-2xl px-4 py-2.5 text-sm leading-snug">${escapeHtml(m.text)}</div>
-        <p class="font-mono2 text-[9px] text-graphite/50 mt-1 ${mine ? 'text-right' : 'text-left'}">${formatDateTime(m.ts)}</p>
-      </div>
-    </div>
-    `;
-  }).join('');
+  return thread.map(m => chatBubbleHtml(m.sender === forRole, m.text, m.ts)).join('');
+}
+
+// Quietly appends one new bubble to an already-open chat thread and scrolls
+// it into view — instead of calling render(), which would regenerate (and
+// re-animate) the whole panel/page just to add one message.
+function appendChatBubble(scrollContainerId, mine, text, ts) {
+  const scroller = document.getElementById(scrollContainerId);
+  if (!scroller) return false;
+  const emptyState = scroller.querySelector('p.italic');
+  if (emptyState) scroller.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = chatBubbleHtml(mine, text, ts).trim();
+  scroller.appendChild(wrapper.firstElementChild);
+  scroller.scrollTop = scroller.scrollHeight;
+  return true;
 }
 
 function mountStudentDetail(studentId) {
@@ -1781,9 +1827,9 @@ function mountStudentDetailInner(studentId, student) {
       const input = document.getElementById('sd-chat-input');
       const text = input.value.trim();
       if (!text) return;
-      sendMessage(studentId, 'admin', text);
+      const msg = sendMessage(studentId, 'admin', text);
       input.value = '';
-      render();
+      if (!appendChatBubble('sd-chat-scroll', true, msg.text, msg.ts)) render();
     });
   }
 }
@@ -3664,9 +3710,16 @@ function bindEvents() {
         if (!ok) return;
         saveAssignments(list => list.filter(a => a.id !== id));
         saveSubmissions(list => list.filter(s => s.assignmentId !== id));
-        if (editingAssignmentId === id) editingAssignmentId = null;
         showToast('Homework deleted.');
-        render();
+        if (editingAssignmentId === id) {
+          // The edit form itself was showing this exact assignment, so it
+          // needs to reset back to "create new" — that's the one case where
+          // a full render is actually necessary.
+          editingAssignmentId = null;
+          render();
+        } else {
+          removeAssignmentCardFromDOM(id);
+        }
       });
     });
   });
@@ -3742,9 +3795,9 @@ function bindEvents() {
       const text = input.value.trim();
       if (!text) return;
       const session = getSession();
-      sendMessage(session.id, 'learner', text);
+      const msg = sendMessage(session.id, 'learner', text);
       input.value = '';
-      render();
+      if (!appendChatBubble('ln-chat-scroll', true, msg.text, msg.ts)) render();
     });
   }
   if (learnerNav === 'notification') {
