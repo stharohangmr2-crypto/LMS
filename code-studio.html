@@ -22,6 +22,7 @@
     --html-color: #e44d26;
     --css-color: #2f9bda;
     --js-color: #f0db4f;
+    --py-color: #3776ab;
     --tok-tag: #6fb3e0;
     --tok-attr: #d3a15c;
     --tok-string: #9fd88a;
@@ -150,6 +151,7 @@
   .tab .ficon.html { background: var(--html-color); }
   .tab .ficon.css { background: var(--css-color); }
   .tab .ficon.js { background: var(--js-color); color:#1a1a1a; }
+  .tab .ficon.py { background: var(--py-color); }
   .tab .close {
     color: var(--text-faint);
     font-size: 14px;
@@ -257,6 +259,12 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 16px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    opacity: 1;
+    transition: opacity 0.15s ease;
+  }
+  .fab.fab-hidden {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* ---------- Overlays / Drawer ---------- */
@@ -498,6 +506,37 @@
   }
   .preview-console-panel.show { display: flex; }
 
+  /* ---------- Python run output (replaces the iframe when running .py) ---------- */
+  .py-console-body {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    font-family: var(--font-code);
+    font-size: 13px;
+    background: #0e1014;
+  }
+  .py-console-body.show { display: block; }
+  .py-console-body .log-line.stdin { color: var(--accent); }
+  .py-loading {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding: 2px 0 10px;
+  }
+  .py-loading.show { display: flex; }
+  .py-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--text-faint);
+    border-top-color: var(--py-color);
+    border-radius: 50%;
+    animation: py-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes py-spin { to { transform: rotate(360deg); } }
+
   /* ---------- Terminal panel (main editor) ---------- */
   .side-panel {
     position: absolute;
@@ -664,6 +703,9 @@
         <div class="panel-head"><span>Console</span><span class="clear-btn" id="previewConsoleClear">Clear</span></div>
         <div class="panel-body" id="previewConsoleBody"></div>
       </div>
+      <div class="py-console-body" id="pyConsoleBody">
+        <div class="py-loading" id="pyLoading"><span class="py-spinner"></span><span>Loading Python (first run only)&hellip;</span></div>
+      </div>
     </div>
   </div>
 
@@ -678,7 +720,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <input type="file" id="importFileInput" accept=".html,.htm,.css,.js,.txt" style="display:none">
+  <input type="file" id="importFileInput" accept=".html,.htm,.css,.js,.py,.txt" style="display:none">
 </div>
 
 <script>
@@ -705,6 +747,9 @@
     if(type === 'js'){
       return 'console.log("hello");';
     }
+    if(type === 'py'){
+      return 'print("Hello from Python")';
+    }
     return '';
   }
 
@@ -715,6 +760,7 @@
     if(e === 'html' || e === 'htm') return 'html';
     if(e === 'css') return 'css';
     if(e === 'js') return 'js';
+    if(e === 'py') return 'py';
     return 'txt';
   }
 
@@ -753,11 +799,41 @@
   // (i.e. everywhere this app is actually used) every call to it failed
   // silently, so nothing was ever really saved and typed content vanished
   // on the next reload.
+  //
+  // storageBroken tracks whether writes are actually taking effect. This
+  // matters because localStorage can silently no-op (not throw!) in a few
+  // real situations — most commonly when this page is embedded in a
+  // sandboxed <iframe> without allow-same-origin, which gives it a
+  // throwaway, disconnected storage area that's empty again on every
+  // reload. If that's happening, deleting every file will *look* like it
+  // worked (the UI updates instantly from the in-memory `files` object),
+  // but nothing was ever actually saved — so the next time this page loads,
+  // loadState() finds nothing and falls back to the starter files, which
+  // reads exactly like "the demo files keep coming back."
+  var storageBroken = false;
   function persist(){
     var payload = { files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch(e){ /* storage unavailable (e.g. private browsing) - continue silently */ }
+      // Read-back check: a sandboxed/opaque-origin iframe can accept a
+      // setItem call without error yet not actually persist it, so a
+      // successful try/catch alone doesn't prove the save stuck.
+      if(localStorage.getItem(STORAGE_KEY) !== JSON.stringify(payload)){
+        flagStorageBroken();
+      } else if(storageBroken){
+        storageBroken = false;
+      }
+    } catch(e){
+      flagStorageBroken();
+    }
+  }
+
+  var storageWarningShown = false;
+  function flagStorageBroken(){
+    storageBroken = true;
+    if(storageWarningShown) return;
+    storageWarningShown = true;
+    showToast('Not saving in this window — changes will be lost on reload');
   }
 
   function loadState(cb){
@@ -797,21 +873,166 @@
   /* ============================================================
      SYNTAX HIGHLIGHTING (lightweight, regex based)
   ============================================================ */
+  // Real HTML5 element names. A tag whose name isn't in here (a typo like
+  // "Titl", a stray custom word, etc.) is left completely unstyled by
+  // highlightHTML below instead of getting the normal tag color — so a
+  // misspelled tag visibly stands out from correctly-spelled ones around it.
+  var KNOWN_HTML_TAGS = {
+    a:1, abbr:1, address:1, area:1, article:1, aside:1, audio:1, b:1, base:1,
+    bdi:1, bdo:1, blockquote:1, body:1, br:1, button:1, canvas:1, caption:1,
+    cite:1, code:1, col:1, colgroup:1, data:1, datalist:1, dd:1, del:1,
+    details:1, dfn:1, dialog:1, div:1, dl:1, dt:1, em:1, embed:1, fieldset:1,
+    figcaption:1, figure:1, footer:1, form:1, h1:1, h2:1, h3:1, h4:1, h5:1,
+    h6:1, head:1, header:1, hgroup:1, hr:1, html:1, i:1, iframe:1, img:1,
+    input:1, ins:1, kbd:1, label:1, legend:1, li:1, link:1, main:1, map:1,
+    mark:1, menu:1, meta:1, meter:1, nav:1, noscript:1, object:1, ol:1,
+    optgroup:1, option:1, output:1, p:1, param:1, picture:1, pre:1,
+    progress:1, q:1, rp:1, rt:1, ruby:1, s:1, samp:1, script:1, section:1,
+    select:1, slot:1, small:1, source:1, span:1, strong:1, style:1, sub:1,
+    summary:1, sup:1, table:1, tbody:1, td:1, template:1, textarea:1,
+    tfoot:1, th:1, thead:1, time:1, title:1, tr:1, track:1, u:1, ul:1,
+    'var':1, video:1, wbr:1
+  };
+
+  // JS keywords recognized inside <script> blocks — same set highlightJS
+  // uses for standalone .js files, kept as an object for fast lookup.
+  var JS_KEYWORDS = {};
+  ['function','return','var','let','const','if','else','for','while','do','new',
+   'typeof','class','extends','import','from','export','default','await','async',
+   'try','catch','finally','throw','switch','case','break','continue','null',
+   'undefined','true','false','this','in','of','instanceof','delete','void',
+   'yield','static','get','set'].forEach(function(k){ JS_KEYWORDS[k] = 1; });
+
+  // Highlights a whole HTML file in one left-to-right pass instead of a
+  // handful of independent regex substitutions. Two things need that:
+  //
+  // 1. JS inside a script block needs its own token rules (keywords,
+  //    strings, comments) instead of being left as plain text, which is
+  //    what was happening before — that's why "let" and quoted strings
+  //    weren't getting colored at all.
+  // 2. An unterminated string should visibly swallow everything after
+  //    it — including past the script's closing tag and into the markup
+  //    below — the same way a real missing closing quote would confuse
+  //    a parser.
+  //    That's only possible with a single continuous scan, since a
+  //    string can only "know" it's unterminated by running out of file
+  //    to search through.
   function highlightHTML(raw){
-    var esc = escapeHtml(raw);
-    // custom connect tag first
-    esc = esc.replace(/(&lt;connect\s*=\s*(&quot;|"|')[^&"']*\2\s*&gt;)/g, function(m){
-      return '<span class="tok-connect">' + m + '</span>';
-    });
-    // comments
-    esc = esc.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comment">$1</span>');
-    // tags
-    esc = esc.replace(/(&lt;\/?)([a-zA-Z][a-zA-Z0-9\-]*)((?:\s+[^&]*?)?)(\/?&gt;)/g, function(m, open, tagname, attrs, close){
-      if(/connect/i.test(tagname)) return m;
-      var hAttrs = attrs.replace(/([a-zA-Z\-:]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
-      return '<span class="tok-tag">' + open + tagname + '</span>' + hAttrs + '<span class="tok-tag">' + close + '</span>';
-    });
-    return esc;
+    var n = raw.length;
+    var out = '';
+    var i = 0;
+    var mode = 'html'; // 'html' | 'script'
+
+    while(i < n){
+      if(mode === 'html'){
+        if(raw[i] === '<'){
+          // HTML comment
+          if(raw.slice(i, i + 4) === '<!--'){
+            var endC = raw.indexOf('-->', i + 4);
+            var stopC = endC === -1 ? n : endC + 3;
+            out += '<span class="tok-comment">' + escapeHtml(raw.slice(i, stopC)) + '</span>';
+            i = stopC;
+            continue;
+          }
+          // custom connect tag
+          var connectMatch = /^<connect\s*=\s*("[^"]*"|'[^']*')\s*>/i.exec(raw.slice(i, i + 300));
+          if(connectMatch){
+            out += '<span class="tok-connect">' + escapeHtml(connectMatch[0]) + '</span>';
+            i += connectMatch[0].length;
+            continue;
+          }
+          // any other tag
+          var tagMatch = /^<(\/?)([a-zA-Z][a-zA-Z0-9\-]*)((?:\s+[^<>]*?)?)(\/?)>/.exec(raw.slice(i, i + 500));
+          if(tagMatch){
+            var full = tagMatch[0];
+            var closing = tagMatch[1] === '/';
+            var tagName = tagMatch[2];
+            var attrs = tagMatch[3];
+            var selfClose = tagMatch[4];
+            var lower = tagName.toLowerCase();
+            if(KNOWN_HTML_TAGS[lower]){
+              var hAttrs = escapeHtml(attrs).replace(/([a-zA-Z\-:]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
+              out += '<span class="tok-tag">' + escapeHtml('<' + tagMatch[1] + tagName) + '</span>' + hAttrs + '<span class="tok-tag">' + escapeHtml(selfClose + '>') + '</span>';
+            } else {
+              out += escapeHtml(full); // unrecognized tag name: left plain
+            }
+            i += full.length;
+            if(lower === 'script' && !closing && !selfClose) mode = 'script';
+            continue;
+          }
+        }
+        out += escapeHtml(raw[i]);
+        i++;
+        continue;
+      }
+
+      // mode === 'script'
+      if(raw[i] === '<'){
+        var closeScript = /^<\/script\s*>/i.exec(raw.slice(i, i + 20));
+        if(closeScript){
+          out += '<span class="tok-tag">' + escapeHtml(closeScript[0]) + '</span>';
+          i += closeScript[0].length;
+          mode = 'html';
+          continue;
+        }
+      }
+      if(raw[i] === '/' && raw[i + 1] === '/'){
+        var endLn = raw.indexOf('\n', i);
+        var stopLn = endLn === -1 ? n : endLn;
+        out += '<span class="tok-comment">' + escapeHtml(raw.slice(i, stopLn)) + '</span>';
+        i = stopLn;
+        continue;
+      }
+      if(raw[i] === '/' && raw[i + 1] === '*'){
+        var endBk = raw.indexOf('*/', i + 2);
+        var stopBk = endBk === -1 ? n : endBk + 2;
+        out += '<span class="tok-comment">' + escapeHtml(raw.slice(i, stopBk)) + '</span>';
+        i = stopBk;
+        continue;
+      }
+      if(raw[i] === '"' || raw[i] === "'" || raw[i] === '`'){
+        var quoteChar = raw[i];
+        var strStart = i;
+        i++;
+        while(i < n){
+          var c = raw[i];
+          if(c === '\\' && i + 1 < n){ i += 2; continue; }
+          if(c === quoteChar){ i++; break; }
+          i++;
+        }
+        // If we never found the matching quote (or only found it after
+        // running through the script's closing tag and beyond), this
+        // span already covers everything from the opening quote to
+        // wherever we stopped — green the whole way, which is exactly
+        // the "we're missing a closing quote" signal.
+        var consumed = raw.slice(strStart, i);
+        out += '<span class="tok-string">' + escapeHtml(consumed) + '</span>';
+        // A normal string closes before the script block does. If it
+        // swallowed the script's closing tag on the way to its closing
+        // quote (or never closed at all), we've fallen out of real script content
+        // — drop back to HTML mode so the rest of the file still renders
+        // sensibly once the missing quote shows up further down.
+        if(/<\/script/i.test(consumed)) mode = 'html';
+        continue;
+      }
+      var numMatch = /^\d+(?:\.\d+)?/.exec(raw.slice(i, i + 40));
+      if(numMatch){
+        out += '<span class="tok-number">' + numMatch[0] + '</span>';
+        i += numMatch[0].length;
+        continue;
+      }
+      var idMatch = /^[a-zA-Z_$][a-zA-Z0-9_$]*/.exec(raw.slice(i, i + 60));
+      if(idMatch){
+        var word = idMatch[0];
+        out += JS_KEYWORDS[word] ? ('<span class="tok-keyword">' + word + '</span>') : escapeHtml(word);
+        i += word.length;
+        continue;
+      }
+      out += escapeHtml(raw[i]);
+      i++;
+    }
+
+    return out;
   }
 
   function highlightCSS(raw){
@@ -833,10 +1054,21 @@
     return esc;
   }
 
+  function highlightPY(raw){
+    var esc = escapeHtml(raw);
+    esc = esc.replace(/(#[^\n]*)/g, '<span class="tok-comment">$1</span>');
+    esc = esc.replace(/("""[\s\S]*?"""|'''[\s\S]*?''')/g, '<span class="tok-string">$1</span>');
+    esc = esc.replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g, '<span class="tok-string">$1</span>');
+    esc = esc.replace(/\b(def|class|return|import|from|as|if|elif|else|for|while|in|is|not|and|or|None|True|False|try|except|finally|raise|with|pass|break|continue|lambda|yield|global|nonlocal|del|assert|async|await|self|print)\b/g, '<span class="tok-keyword">$1</span>');
+    esc = esc.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
+    return esc;
+  }
+
   function highlightFor(type, raw){
     if(type === 'html') return highlightHTML(raw);
     if(type === 'css') return highlightCSS(raw);
     if(type === 'js') return highlightJS(raw);
+    if(type === 'py') return highlightPY(raw);
     return escapeHtml(raw);
   }
 
@@ -856,6 +1088,7 @@
     if(type === 'html') return '<span class="ficon html">5</span>';
     if(type === 'css') return '<span class="ficon css">3</span>';
     if(type === 'js') return '<span class="ficon js">JS</span>';
+    if(type === 'py') return '<span class="ficon py">PY</span>';
     return '<span class="ficon" style="background:#555">TX</span>';
   }
 
@@ -887,7 +1120,7 @@
     if(!f){ fileTitle.textContent = 'No file open'; fileSubtitle.textContent = ''; runBtn.style.display = 'none'; return; }
     fileTitle.textContent = activeFile;
     fileSubtitle.textContent = f.dirty ? 'Unsaved changes' : (f.saved ? 'Saved' : 'New file');
-    runBtn.style.display = (f.type === 'html' || f.type === 'css' || f.type === 'js') ? '' : 'none';
+    runBtn.style.display = (f.type === 'html' || f.type === 'css' || f.type === 'js' || f.type === 'py') ? '' : 'none';
   }
 
   var wrapMeasureEl = null;
@@ -998,6 +1231,18 @@
 
   codeInput.addEventListener('scroll', syncScroll);
 
+  // Typing used to only live in memory: persist() was never called from
+  // here, so anything typed since the last tab switch/save vanished on
+  // reload or if the tab/app was closed. We now autosave to localStorage
+  // a short moment after the user stops typing (debounced so we're not
+  // writing to disk on every single keystroke), plus a flush below for
+  // the moment the page is backgrounded or closed.
+  var autosaveTimer = null;
+  function schedulePersist(){
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(persist, 500);
+  }
+
   codeInput.addEventListener('input', function(){
     var f = files[activeFile];
     if(!f) return;
@@ -1007,15 +1252,146 @@
     renderLineNumbers();
     renderTitle();
     renderTabs();
+    schedulePersist();
   });
 
+  // Mobile browsers rarely fire beforeunload reliably when a tab is
+  // backgrounded or the app is swiped away, so visibilitychange is the
+  // more trustworthy signal on phones; beforeunload is kept as a
+  // best-effort fallback for desktop browsers.
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'hidden'){
+      clearTimeout(autosaveTimer);
+      persist();
+    }
+  });
+  window.addEventListener('beforeunload', function(){
+    clearTimeout(autosaveTimer);
+    persist();
+  });
+
+  var INDENT_UNIT = '  '; // matches what the Tab key already inserts
+
+  // HTML elements that never wrap child content, so a line ending in one
+  // of these shouldn't push the next line in a tab stop.
+  var VOID_TAGS = { area:1, base:1, br:1, col:1, embed:1, hr:1, img:1, input:1, link:1, meta:1, source:1, track:1, wbr:1 };
+
+  // Decides whether the line the cursor is leaving ends in something
+  // still "open" (an unclosed HTML tag, a CSS/JS brace, a Python block
+  // colon) that its content should be nested one level under.
+  function lineOpensBlock(line, type){
+    var trimmed = line.replace(/\s+$/, '');
+    if(!trimmed) return false;
+    if(type === 'html'){
+      var m = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^<>])*)>$/.exec(trimmed);
+      if(!m) return false;
+      var closing = m[1] === '/';
+      var tagName = m[2].toLowerCase();
+      var attrs = m[3];
+      var selfClosing = /\/\s*$/.test(attrs);
+      if(closing || selfClosing || VOID_TAGS[tagName] || tagName === 'connect') return false;
+      return true;
+    }
+    if(type === 'css' || type === 'js'){
+      return /\{$/.test(trimmed);
+    }
+    if(type === 'py'){
+      return /:$/.test(trimmed);
+    }
+    return false;
+  }
+
+  function handleEnterKey(){
+    var f = files[activeFile];
+    if(!f) return false;
+    var val = codeInput.value;
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var lineStart = val.lastIndexOf('\n', start - 1) + 1;
+    var currentLine = val.slice(lineStart, start);
+    var baseIndent = /^[ \t]*/.exec(currentLine)[0];
+    var extra = lineOpensBlock(currentLine, f.type) ? INDENT_UNIT : '';
+    // Plain spaces, inserted like any other typed character — backspace
+    // removes them exactly the same way it removes anything else typed.
+    var insertion = '\n' + baseIndent + extra;
+    codeInput.value = val.slice(0, start) + insertion + val.slice(end);
+    var newPos = start + insertion.length;
+    codeInput.selectionStart = codeInput.selectionEnd = newPos;
+    return true;
+  }
+
+  // Opening one of these always inserts its match right after the cursor
+  // and leaves the cursor sitting between the two, so <, ", ', `, ( only
+  // ever need to be typed once — the closing half is already there.
+  var OPEN_TO_CLOSE = { '<': '>', '(': ')' };
+  // Quotes/backtick double as their own closing character, so they need
+  // the skip-over check below rather than always inserting a fresh pair.
+  var SYMMETRIC_PAIR = { '"': 1, "'": 1, '`': 1 };
+  // These only ever act as closers — never auto-inserted on their own,
+  // just eligible to be stepped over if that's what's already there.
+  var CLOSE_ONLY = { '>': 1, ')': 1 };
+
+  function insertPair(open, close){
+    var val = codeInput.value;
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    codeInput.value = val.slice(0, start) + open + close + val.slice(end);
+    codeInput.selectionStart = codeInput.selectionEnd = start + open.length;
+  }
+
+  // Typing a closing character while the cursor is already sitting right
+  // in front of that exact character just steps over it instead of
+  // adding a second one — without this, finishing a string you already
+  // auto-closed would leave an extra quote behind.
+  function skipOverIfNext(ch){
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    if(start !== end) return false;
+    if(codeInput.value[start] !== ch) return false;
+    codeInput.selectionStart = codeInput.selectionEnd = start + 1;
+    return true;
+  }
+
+  // Typing { opens the block on its own line with an indented blank line
+  // ready to type on and the closing brace lined up under where the
+  // block started — e.g. "function Table() {" turns into that plus a
+  // blank indented line plus a matching "}", cursor on the blank line.
+  function insertBraceBlock(){
+    var val = codeInput.value;
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var lineStart = val.lastIndexOf('\n', start - 1) + 1;
+    var currentLine = val.slice(lineStart, start);
+    var baseIndent = /^[ \t]*/.exec(currentLine)[0];
+    var inner = baseIndent + INDENT_UNIT;
+    var insertion = '{\n' + inner + '\n' + baseIndent + '}';
+    codeInput.value = val.slice(0, start) + insertion + val.slice(end);
+    codeInput.selectionStart = codeInput.selectionEnd = start + 2 + inner.length;
+  }
+
   codeInput.addEventListener('keydown', function(e){
-    if(e.key === 'Tab'){
+    var key = e.key;
+    var collapsed = codeInput.selectionStart === codeInput.selectionEnd;
+    if(key === 'Tab'){
       e.preventDefault();
       var start = codeInput.selectionStart, end = codeInput.selectionEnd;
       var val = codeInput.value;
       codeInput.value = val.slice(0, start) + '  ' + val.slice(end);
       codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+      codeInput.dispatchEvent(new Event('input'));
+    } else if(key === 'Enter'){
+      e.preventDefault();
+      if(handleEnterKey()) codeInput.dispatchEvent(new Event('input'));
+    } else if(key === '{'){
+      e.preventDefault();
+      insertBraceBlock();
+      codeInput.dispatchEvent(new Event('input'));
+    } else if(SYMMETRIC_PAIR[key] && collapsed){
+      e.preventDefault();
+      if(!skipOverIfNext(key)) insertPair(key, key);
+      codeInput.dispatchEvent(new Event('input'));
+    } else if(OPEN_TO_CLOSE[key] && collapsed){
+      e.preventDefault();
+      insertPair(key, OPEN_TO_CLOSE[key]);
+      codeInput.dispatchEvent(new Event('input'));
+    } else if(CLOSE_ONLY[key] && collapsed && skipOverIfNext(key)){
+      e.preventDefault();
       codeInput.dispatchEvent(new Event('input'));
     }
   });
@@ -1338,7 +1714,7 @@
 
   function createNewUntitledFile(){
     var name = createFile(nextUntitledName(), 'txt');
-    showToast('Created ' + name + ' \u2014 rename it to .html/.css/.js');
+    showToast('Created ' + name + ' \u2014 rename it to .html/.css/.js/.py');
   }
 
   function renderSaveAsModal(){
@@ -1550,9 +1926,22 @@
   var previewConsoleDot = document.getElementById('previewConsoleDot');
   var previewMoreBtn = document.getElementById('previewMoreBtn');
   var previewMoreMenu = document.getElementById('previewMoreMenu');
+  var pyConsoleBody = document.getElementById('pyConsoleBody');
+  var pyLoading = document.getElementById('pyLoading');
   var deviceMode = false;
   var cacheDisabled = false;
   var previewHistoryActive = false;
+
+  // Switches the preview overlay between "showing a live HTML/CSS/JS page"
+  // and "showing Python's printed output" — there's no page to render for a
+  // .py file, just a console.
+  function setPreviewMode(mode){
+    var isPy = mode === 'py';
+    previewFrame.style.display = isPy ? 'none' : '';
+    previewConsolePanel.classList.remove('show');
+    pyConsoleBody.classList.toggle('show', isPy);
+    previewMoreBtn.style.display = isPy ? 'none' : '';
+  }
 
   function findHtmlToRun(){
     var f = files[activeFile];
@@ -1623,15 +2012,100 @@
   });
 
   function runPreview(){
+    var active = files[activeFile];
+    if(active && active.type === 'py'){
+      runPython(activeFile);
+      return;
+    }
     var name = findHtmlToRun();
     if(!name){ showToast('Create or open an HTML file first'); return; }
     var compiled = compileConnectTags(files[name].content);
     previewLabel.textContent = 'Preview \u2014 ' + name;
+    setPreviewMode('html');
     clearPreviewConsole();
     previewConsolePanel.classList.remove('show');
     if(cacheDisabled) hardResetPreviewFrame();
     previewFrame.srcdoc = consoleHookScript + compiled;
     showPreviewOverlay();
+  }
+
+  /* ============================================================
+     PYTHON RUNTIME (Pyodide — real CPython compiled to WebAssembly,
+     runs entirely in the browser, no server involved)
+  ============================================================ */
+  var PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+  var pyodideInstance = null;
+  var pyodideLoadingPromise = null;
+
+  function loadPyodideScript(){
+    return new Promise(function(resolve, reject){
+      if(window.loadPyodide){ resolve(); return; }
+      var s = document.createElement('script');
+      s.src = PYODIDE_CDN;
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ reject(new Error('Could not load the Python runtime — check your internet connection.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function pyPrint(text, cls){
+    var line = document.createElement('div');
+    line.className = 'log-line' + (cls ? ' ' + cls : '');
+    line.textContent = text;
+    pyConsoleBody.appendChild(line);
+    pyConsoleBody.scrollTop = pyConsoleBody.scrollHeight;
+  }
+
+  function clearPyConsole(){
+    pyConsoleBody.innerHTML = '';
+    pyConsoleBody.appendChild(pyLoading);
+  }
+
+  // Loads Pyodide once (cached for the rest of this page session — later
+  // runs reuse the same interpreter instead of re-downloading it) and
+  // patches input() to a native, blocking window.prompt(), since a browser
+  // has no real stdin for a script to read from.
+  function getPyodide(){
+    if(pyodideInstance) return Promise.resolve(pyodideInstance);
+    if(pyodideLoadingPromise) return pyodideLoadingPromise;
+    pyLoading.classList.add('show');
+    pyodideLoadingPromise = loadPyodideScript().then(function(){
+      return window.loadPyodide({
+        stdout: function(msg){ pyPrint(msg); },
+        stderr: function(msg){ pyPrint(msg, 'error'); }
+      });
+    }).then(function(inst){
+      inst.runPython(
+        'import builtins\n' +
+        'from js import window as _cs_window\n' +
+        'def _cs_input(prompt=""):\n' +
+        '    v = _cs_window.prompt(str(prompt))\n' +
+        '    return v if v is not None else ""\n' +
+        'builtins.input = _cs_input\n'
+      );
+      pyodideInstance = inst;
+      pyLoading.classList.remove('show');
+      return inst;
+    }).catch(function(err){
+      pyLoading.classList.remove('show');
+      pyodideLoadingPromise = null;
+      throw err;
+    });
+    return pyodideLoadingPromise;
+  }
+
+  function runPython(name){
+    var f = files[name];
+    if(!f) return;
+    previewLabel.textContent = 'Run \u2014 ' + name;
+    setPreviewMode('py');
+    clearPyConsole();
+    showPreviewOverlay();
+    getPyodide().then(function(pyodide){
+      return pyodide.runPythonAsync(f.content);
+    }).catch(function(err){
+      pyPrint(String(err && err.message ? err.message : err), 'error');
+    });
   }
 
   function openPreviewWithConsole(){
@@ -1779,7 +2253,8 @@
   /* ============================================================
      FAB (scroll to top of editor)
   ============================================================ */
-  document.getElementById('fab').addEventListener('click', function(){
+  var fabEl = document.getElementById('fab');
+  fabEl.addEventListener('click', function(){
     codeInput.scrollTop = 0;
     codeInput.focus();
   });
@@ -1792,7 +2267,10 @@
      keyboard. window.visualViewport reports the real visible height,
      so we resize #phone to match it: the layout shrinks to sit
      exactly above the keyboard while it's open, and grows back to
-     full height the moment it closes.
+     full height the moment it closes. The same height gap tells us
+     whether the keyboard is open, which we use to hide the fab —
+     it only makes sense as a "scroll the editor" shortcut when the
+     keyboard isn't already covering half the screen.
   ============================================================ */
   var phoneEl = document.getElementById('phone');
 
@@ -1800,11 +2278,17 @@
     phoneEl.style.height = h + 'px';
   }
 
+  function updateFabVisibility(vvHeight){
+    var keyboardOpen = (window.innerHeight - vvHeight) > 150;
+    fabEl.classList.toggle('fab-hidden', keyboardOpen);
+  }
+
   function initViewportHandling(){
     if(window.visualViewport){
       var vv = window.visualViewport;
       var update = function(){
         applyPhoneHeight(vv.height);
+        updateFabVisibility(vv.height);
         // Some browsers scroll the page slightly when the keyboard
         // opens; keep the app pinned to the top of the viewport.
         window.scrollTo(0, 0);
