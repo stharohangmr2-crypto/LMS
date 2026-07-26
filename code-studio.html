@@ -35,6 +35,9 @@
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --code-size: 15px;
+    --editor-font-family: var(--font-code);
+    --editor-font-style: normal;
+    --editor-font-variant: normal;
     --editor-bottom-pad: 40vh;
     --radius-sm: 10px;
     --radius-md: 14px;
@@ -196,7 +199,7 @@
     padding: 8px 8px var(--editor-bottom-pad) 12px;
     text-align: right;
     color: var(--text-faint);
-    font-family: var(--font-code);
+    font-family: var(--editor-font-family);
     font-size: var(--code-size);
     line-height: 1.55;
     user-select: none;
@@ -214,19 +217,43 @@
     top: 0; left: 0; right: 0; bottom: 0;
     margin: 0;
     padding: 8px 12px var(--editor-bottom-pad) 6px;
-    font-family: var(--font-code);
+    font-family: var(--editor-font-family);
+    font-style: var(--editor-font-style);
+    font-variant: var(--editor-font-variant);
     font-size: var(--code-size);
     line-height: 1.55;
     white-space: pre;
     overflow: auto;
     tab-size: 2;
     border: none;
+    /* The highlighter wraps runs of text in separate <span> tags for
+       coloring, which breaks up what would otherwise be one continuous
+       run of characters in the plain textarea. Monospace fonts don't
+       care (every character has a fixed width no matter what's next to
+       it), but decorative fonts with real kerning/ligatures (cursive
+       especially) can render the same characters at a very slightly
+       different total width depending on where those span boundaries
+       land — which drifts the visible text out of sync with the cursor
+       a little more with every token. Disabling both here keeps every
+       character's width fixed regardless of how it's split up.
+    */
+    font-kerning: none;
+    font-variant-ligatures: none;
   }
   .highlight-layer {
     color: var(--text-main);
     pointer-events: none;
     background: transparent;
   }
+  /* Browsers ship a default stylesheet rule forcing code/pre/kbd/samp to
+     monospace. That rule matches #highlightCode directly, which beats the
+     font this element would otherwise just inherit from its .highlight-layer
+     parent — so without this override, the visible colored text stays
+     stuck in monospace no matter what font is chosen, while the invisible
+     textarea underneath (which the real cursor belongs to) correctly
+     switches fonts. That gap between "what's drawn" and "what the cursor
+     thinks it's next to" is exactly the drift/glitch effect. */
+  #highlightCode { font: inherit; font-kerning: inherit; font-variant-ligatures: inherit; }
   .code-input {
     background: transparent;
     color: transparent;
@@ -481,7 +508,36 @@
     transition: transform 0.15s ease;
   }
   .switch.on .knob { transform: translateX(18px); }
-  .seg-group { display: flex; gap: 8px; }
+  .setting-row.column { flex-direction: column; align-items: stretch; gap: 10px; }
+  .setting-row-top { display: flex; align-items: center; justify-content: space-between; }
+  .setting-value { color: var(--accent); font-weight: 700; font-size: 13px; font-family: var(--font-code); }
+  .font-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--divider);
+    outline: none;
+    margin: 4px 0;
+  }
+  .font-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .font-slider::-moz-range-thumb {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+  }
+  .seg-group { display: flex; gap: 8px; flex-wrap: wrap; }
   .seg-btn {
     padding: 7px 14px; border-radius: var(--radius-pill);
     background: var(--bg-app); border: 1px solid var(--divider);
@@ -674,7 +730,7 @@
       <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
     </div>
     <div class="empty-state" id="emptyState">
-      No files yet.<br>Open the menu (&#9776;) and tap <br>New file <br> to get started.
+      No files yet.<br>Open the menu (&#9776;) and tap <b>New file</b> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
   </div>
@@ -796,6 +852,28 @@
   var recentFiles = [];      // recently opened filenames, most recent first
   var wordWrap = false;
   var fontSize = 15;
+  var fontStyleKey = 'mono';
+  // Every option here uses only built-in generic CSS font families
+  // (monospace/serif/sans-serif/cursive) or very common OS font names as a
+  // first choice — there's no @font-face/network font loading in this
+  // single-file app, so anything more exotic would just silently fall back
+  // to the browser default instead of actually rendering as intended.
+  var FONT_STYLES = {
+    mono:      { label: 'Default',    family: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace', style: 'normal', variant: 'normal' },
+    serif:     { label: 'Serif',      family: 'Georgia, "Times New Roman", serif', style: 'normal', variant: 'normal' },
+    rounded:   { label: 'Rounded',    family: '-apple-system, "Segoe UI", Roboto, sans-serif', style: 'normal', variant: 'normal' },
+    italic:    { label: 'Italic',     family: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace', style: 'italic', variant: 'normal' },
+    cursive:   { label: 'Cursive',    family: '"Segoe Script", "Bradley Hand", cursive', style: 'normal', variant: 'normal' },
+    smallcaps: { label: 'Small Caps', family: 'Georgia, serif', style: 'normal', variant: 'small-caps' }
+  };
+  function applyFontStyle(key){
+    var fs = FONT_STYLES[key] || FONT_STYLES.mono;
+    fontStyleKey = key;
+    var root = document.documentElement.style;
+    root.setProperty('--editor-font-family', fs.family);
+    root.setProperty('--editor-font-style', fs.style);
+    root.setProperty('--editor-font-variant', fs.variant);
+  }
   var STORAGE_KEY = 'code-studio-vfs';
 
   function defaultTemplate(type){
@@ -880,7 +958,10 @@
   var SAVE_VERSION = 2;
   var storageBroken = false;
   function persist(){
-    var payload = { version: SAVE_VERSION, files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
+    var payload = {
+      version: SAVE_VERSION, files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
+      settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey }
+    };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       // Read-back check: a sandboxed/opaque-origin iframe can accept a
@@ -914,6 +995,12 @@
           openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
           activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
           recentFiles = data.recentFiles || [];
+          if(data.settings){
+            wordWrap = !!data.settings.wordWrap;
+            fontSize = data.settings.fontSize || fontSize;
+            document.documentElement.style.setProperty('--code-size', fontSize + 'px');
+            applyFontStyle(data.settings.fontStyleKey || 'mono');
+          }
           cb();
           return;
         }
@@ -1959,31 +2046,56 @@
       wordWrap = !wordWrap;
       sw.classList.toggle('on', wordWrap);
       applyWrapSetting();
+      persist();
     });
     wrapRow.appendChild(sw);
 
     var fontRow = document.createElement('div');
-    fontRow.className = 'setting-row';
-    fontRow.innerHTML = '<span class="setting-label">Font size</span>';
-    var seg = document.createElement('div');
-    seg.className = 'seg-group';
-    [13,15,17].forEach(function(sz){
-      var b = document.createElement('div');
-      b.className = 'seg-btn' + (fontSize === sz ? ' active' : '');
-      b.textContent = sz;
-      b.addEventListener('click', function(){
-        fontSize = sz;
-        document.documentElement.style.setProperty('--code-size', sz + 'px');
-        seg.querySelectorAll('.seg-btn').forEach(function(x){ x.classList.remove('active'); });
-        b.classList.add('active');
-      });
-      seg.appendChild(b);
+    fontRow.className = 'setting-row column';
+    var fontTop = document.createElement('div');
+    fontTop.className = 'setting-row-top';
+    fontTop.innerHTML = '<span class="setting-label">Font size</span><span class="setting-value" id="fontSizeValue">' + fontSize + 'px</span>';
+    var slider = document.createElement('input');
+    slider.type = 'range';
+    slider.className = 'font-slider';
+    slider.min = '6';
+    slider.max = '30';
+    slider.value = String(fontSize);
+    slider.addEventListener('input', function(){
+      fontSize = parseInt(slider.value, 10);
+      document.documentElement.style.setProperty('--code-size', fontSize + 'px');
+      fontTop.querySelector('#fontSizeValue').textContent = fontSize + 'px';
     });
-    fontRow.appendChild(seg);
+    slider.addEventListener('change', persist);
+    fontRow.appendChild(fontTop);
+    fontRow.appendChild(slider);
+
+    var styleRow = document.createElement('div');
+    styleRow.className = 'setting-row column';
+    styleRow.innerHTML = '<span class="setting-label">Font style</span>';
+    var styleSeg = document.createElement('div');
+    styleSeg.className = 'seg-group';
+    Object.keys(FONT_STYLES).forEach(function(key){
+      var b = document.createElement('div');
+      b.className = 'seg-btn' + (fontStyleKey === key ? ' active' : '');
+      b.style.fontFamily = FONT_STYLES[key].family;
+      b.style.fontStyle = FONT_STYLES[key].style;
+      b.style.fontVariant = FONT_STYLES[key].variant;
+      b.textContent = FONT_STYLES[key].label;
+      b.addEventListener('click', function(){
+        applyFontStyle(key);
+        styleSeg.querySelectorAll('.seg-btn').forEach(function(x){ x.classList.remove('active'); });
+        b.classList.add('active');
+        persist();
+      });
+      styleSeg.appendChild(b);
+    });
+    styleRow.appendChild(styleSeg);
 
     modalCard.appendChild(title);
     modalCard.appendChild(wrapRow);
     modalCard.appendChild(fontRow);
+    modalCard.appendChild(styleRow);
   }
 
   function renderHelpModal(){
