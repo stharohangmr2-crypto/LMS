@@ -36,6 +36,10 @@
     --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --code-size: 15px;
     --editor-bottom-pad: 40vh;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 22px;
+    --radius-pill: 999px;
   }
 
   * { box-sizing: border-box; }
@@ -56,6 +60,7 @@
     flex-direction: column;
     position: relative;
     overflow: hidden;
+    border-radius: 18px;
     box-shadow: 0 0 40px rgba(0,0,0,0.5);
   }
 
@@ -79,10 +84,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: 50%;
     cursor: pointer;
     flex-shrink: 0;
     padding: 0;
+    transition: background 0.12s ease;
   }
   .icon-btn:active { background: rgba(255,255,255,0.08); }
   .title-block {
@@ -129,11 +135,14 @@
     cursor: pointer;
     flex-shrink: 0;
     position: relative;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    margin: 6px 2px 0;
+    transition: background 0.12s ease;
   }
   .tab.active {
     color: var(--text-main);
     border-bottom: 2px solid var(--accent);
-    background: rgba(255,255,255,0.02);
+    background: rgba(255,255,255,0.05);
   }
   .tab .dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -145,7 +154,7 @@
     flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 10px; font-weight: 800;
-    border-radius: 3px;
+    border-radius: 5px;
     color: #fff;
   }
   .tab .ficon.html { background: var(--html-color); }
@@ -168,6 +177,21 @@
     position: relative;
     background: var(--bg-editor);
   }
+  .empty-state {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px;
+    color: var(--text-faint);
+    font-size: 14px;
+    line-height: 1.6;
+    pointer-events: none;
+  }
+  .empty-state.show { display: flex; }
+  .empty-state b { color: var(--text-main); }
   .line-numbers {
     padding: 8px 8px var(--editor-bottom-pad) 12px;
     text-align: right;
@@ -239,12 +263,15 @@
     color: var(--text-main);
     font-family: var(--font-code);
     font-size: 15px;
-    padding: 10px 18px;
-    background: none;
+    padding: 8px 16px;
+    margin: 6px 3px;
+    background: rgba(255,255,255,0.05);
     border: none;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
+    transition: background 0.12s ease;
   }
-  .sym-btn:active { background: rgba(255,255,255,0.08); }
+  .sym-btn:active { background: rgba(255,255,255,0.14); }
 
   /* ---------- Scroll-to-top fab (decorative, matches screenshot) ---------- */
   .fab {
@@ -289,6 +316,7 @@
     transition: transform 0.2s ease;
     z-index: 21;
     overflow-y: auto;
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     box-shadow: -2px 0 18px rgba(0,0,0,0.4);
   }
   .drawer.show { transform: translateX(0); }
@@ -301,8 +329,9 @@
     font-size: 15px;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     cursor: pointer;
+    transition: background 0.12s ease;
   }
-  .drawer-item:active { background: rgba(255,255,255,0.05); }
+  .drawer-item:active { background: rgba(255,255,255,0.06); border-radius: var(--radius-sm); }
   .drawer-item .di-icon { color: var(--text-dim); font-size: 15px; width: 20px; text-align: center; }
   .drawer-gap { height: 8px; background: rgba(0,0,0,0.15); }
 
@@ -312,7 +341,7 @@
     top: 54px; right: 8px;
     background: var(--bg-panel);
     border: 1px solid var(--divider);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     min-width: 190px;
     z-index: 25;
     overflow: hidden;
@@ -331,13 +360,13 @@
     border-bottom: 1px solid rgba(255,255,255,0.05);
   }
   .popup-item:last-child { border-bottom: none; }
-  .popup-item:active { background: rgba(255,255,255,0.06); }
+  .popup-item:active { background: rgba(255,255,255,0.08); }
   .popup-item .pi-icon { width: 18px; text-align: center; font-size: 15px; color: var(--text-dim); flex-shrink: 0; }
   .popup-item .pi-label { flex: 1; }
   .popup-item .pi-check {
     width: 16px; height: 16px;
     border: 1.5px solid var(--text-faint);
-    border-radius: 3px;
+    border-radius: 5px;
     flex-shrink: 0;
   }
   .popup-item .pi-check.checked { background: var(--accent); border-color: var(--accent); }
@@ -354,12 +383,12 @@
   }
   .modal-scrim.show { display: flex; }
   .modal-scrim.modal-scrim-top { align-items: flex-start; padding-top: 8vh; }
-  .modal-scrim.modal-scrim-top .modal-card { border-radius: 16px; }
+  .modal-scrim.modal-scrim-top .modal-card { border-radius: var(--radius-lg); }
   .modal-card {
     background: var(--bg-panel);
     width: 100%;
     max-height: 84%;
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding: 18px 18px 20px;
     overflow-y: auto;
     animation: slideUp 0.18s ease;
@@ -376,12 +405,13 @@
     background: var(--bg-app);
     border: 1px solid var(--divider);
     color: var(--text-main);
-    border-radius: 8px;
-    padding: 11px 12px;
+    border-radius: var(--radius-md);
+    padding: 11px 14px;
     font-size: 15px;
     font-family: var(--font-code);
     margin-bottom: 12px;
     outline: none;
+    transition: border-color 0.12s ease;
   }
   .modal-input:focus { border-color: var(--accent); }
   .modal-actions {
@@ -391,8 +421,8 @@
     margin-top: 14px;
   }
   .btn {
-    padding: 9px 16px;
-    border-radius: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-pill);
     border: none;
     font-size: 14px;
     font-weight: 600;
@@ -409,7 +439,9 @@
     color: var(--text-main);
     font-size: 14.5px;
     cursor: pointer;
+    transition: background 0.12s ease;
   }
+  .file-row:active { background: rgba(255,255,255,0.05); border-radius: var(--radius-sm); }
   .file-row .frow-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file-row .frow-del { color: var(--text-faint); font-size: 15px; padding: 4px; }
   .empty-hint { color: var(--text-faint); font-size: 13.5px; padding: 14px 4px; }
@@ -418,8 +450,8 @@
     display: block;
     background: var(--bg-app);
     border: 1px solid var(--divider);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
     color: var(--accent);
     font-family: var(--font-code);
     font-size: 13px;
@@ -436,7 +468,7 @@
   .switch {
     width: 42px; height: 24px;
     background: var(--divider);
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
     position: relative;
     cursor: pointer;
     flex-shrink: 0;
@@ -449,9 +481,9 @@
     transition: transform 0.15s ease;
   }
   .switch.on .knob { transform: translateX(18px); }
-  .seg-group { display: flex; gap: 6px; }
+  .seg-group { display: flex; gap: 8px; }
   .seg-btn {
-    padding: 6px 12px; border-radius: 7px;
+    padding: 7px 14px; border-radius: var(--radius-pill);
     background: var(--bg-app); border: 1px solid var(--divider);
     color: var(--text-dim); font-size: 13px; cursor: pointer;
   }
@@ -499,6 +531,7 @@
     height: 46%;
     background: var(--bg-panel);
     border-top: 1px solid var(--divider);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     display: none;
     flex-direction: column;
     z-index: 5;
@@ -544,6 +577,7 @@
     height: 46%;
     background: var(--bg-panel);
     border-top: 1px solid var(--divider);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     display: none;
     flex-direction: column;
     z-index: 22;
@@ -559,6 +593,16 @@
     flex-shrink: 0;
   }
   .panel-head span.clear-btn { color: var(--text-dim); font-weight: 400; cursor: pointer; }
+  .panel-head-actions { display: flex; align-items: center; gap: 16px; }
+  .panel-close {
+    color: var(--text-dim);
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .panel-close:hover { color: var(--text-main); }
   .panel-body {
     flex: 1;
     overflow-y: auto;
@@ -588,8 +632,8 @@
     transform: translateX(-50%) translateY(10px);
     background: #34383f;
     color: var(--text-main);
-    padding: 10px 18px;
-    border-radius: 8px;
+    padding: 11px 22px;
+    border-radius: var(--radius-pill);
     font-size: 13.5px;
     opacity: 0;
     pointer-events: none;
@@ -610,8 +654,8 @@
   <div class="topbar">
     <button class="icon-btn" id="menuBtn" title="Menu">&#9776;</button>
     <div class="title-block">
-      <div class="file-title" id="fileTitle">index.html</div>
-      <div class="file-subtitle" id="fileSubtitle">New file</div>
+      <div class="file-title" id="fileTitle">No file open</div>
+      <div class="file-subtitle" id="fileSubtitle"></div>
     </div>
     <div class="top-actions">
       <button class="icon-btn" id="renameBtn" title="Rename">&#9998;</button>
@@ -628,6 +672,9 @@
     <div class="line-numbers" id="lineNumbers">1</div>
     <div class="code-area">
       <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+    </div>
+    <div class="empty-state" id="emptyState">
+      No files yet.<br>Open the menu (&#75757566;) and tap <br>New file</br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
   </div>
@@ -700,7 +747,13 @@
     <div class="preview-body" id="previewBody">
       <iframe id="previewFrame" sandbox="allow-scripts allow-modals allow-forms allow-popups"></iframe>
       <div class="preview-console-panel" id="previewConsolePanel">
-        <div class="panel-head"><span>Console</span><span class="clear-btn" id="previewConsoleClear">Clear</span></div>
+        <div class="panel-head">
+          <span>Console</span>
+          <div class="panel-head-actions">
+            <span class="clear-btn" id="previewConsoleClear">Clear</span>
+            <span class="panel-close" id="previewConsoleClose" title="Close">&times;</span>
+          </div>
+        </div>
         <div class="panel-body" id="previewConsoleBody"></div>
       </div>
       <div class="py-console-body" id="pyConsoleBody">
@@ -711,7 +764,13 @@
 
   <!-- Terminal panel -->
   <div class="side-panel" id="terminalPanel">
-    <div class="panel-head"><span>Terminal</span><span class="clear-btn" id="terminalClear">Clear</span></div>
+    <div class="panel-head">
+      <span>Terminal</span>
+      <div class="panel-head-actions">
+        <span class="clear-btn" id="terminalClear">Clear</span>
+        <span class="panel-close" id="terminalClose" title="Close">&times;</span>
+      </div>
+    </div>
     <div class="panel-body" id="terminalBody"></div>
     <div class="term-input-row">
       <span class="term-prompt">&gt;</span>
@@ -764,29 +823,21 @@
     return 'txt';
   }
 
-  function seedDefaults(){
-    files = {
-      'index.html': {
-        content: '<!DOCTYPE html>\n<html>\n  <head>\n    <title>My Page</title>\n    <connect="style.css">\n  </head>\n  <body>\n    <h1>Hello World</h1>\n    <p>Edit this file, then tap the play button to preview it.</p>\n    <connect="script.js">\n  </body>\n</html>',
-        type: 'html', dirty: false, saved: true
-      },
-      'style.css': {
-        content: 'body {\n  font-family: sans-serif;\n  background: #fafafa;\n  color: #222;\n  padding: 24px;\n}\n\nh1 {\n  color: #e44d26;\n}',
-        type: 'css', dirty: false, saved: true
-      },
-      'script.js': {
-        content: 'console.log("Hello from script.js");',
-        type: 'js', dirty: false, saved: true
-      }
-    };
-    // All three starter files are opened as tabs right away (nothing left
-    // hidden in the background). Previously an extra "untitled.html" sat
-    // in the file list without a visible tab, so a brand-new file renamed
-    // to that same name would hit a "already exists" collision with a file
-    // the user couldn't even see yet.
-    openTabs = ['index.html', 'style.css', 'script.js'];
-    activeFile = 'index.html';
-    recentFiles = ['index.html', 'style.css', 'script.js'];
+  // Called whenever there's no saved project yet (first-ever launch, or
+  // storage got wiped) — the app starts completely empty on purpose.
+  // It used to seed three demo files (index.html/style.css/script.js)
+  // here, which caused a confusing loop in browsing contexts where
+  // localStorage silently doesn't persist (see the note on storageBroken
+  // below): every reload would look like those files "came back" even
+  // after being deleted, because nothing had actually been saved to
+  // begin with. Starting empty makes that failure mode obvious instead
+  // of disguising it as demo content, and means a deleted file is simply
+  // gone rather than being one reload away from reappearing.
+  function startWithNoFiles(){
+    files = {};
+    openTabs = [];
+    activeFile = null;
+    recentFiles = [];
   }
 
   /* ============================================================
@@ -810,9 +861,24 @@
   // but nothing was ever actually saved — so the next time this page loads,
   // loadState() finds nothing and falls back to the starter files, which
   // reads exactly like "the demo files keep coming back."
+  //
+  // SAVE_VERSION marks the shape of what persist() writes, separately from
+  // the storageBroken problem above. It exists so a save written by an
+  // older build of this app — back when new installs seeded
+  // index.html/style.css/script.js — gets treated as stale rather than
+  // loaded as-is. Without this, removing that seeding code only stopped
+  // *new* installs from getting demo files: a browser that already had an
+  // old save sitting in localStorage from before the change would still
+  // load it right back, complete with demo files and anything since
+  // deleted, because loadState() had no way to tell "old leftover save"
+  // apart from "real saved project." Bumping this number forces exactly
+  // one hard reset to a true blank slate the next time this file loads;
+  // every save from then on carries the current version, so this only
+  // ever fires once per stale save.
+  var SAVE_VERSION = 2;
   var storageBroken = false;
   function persist(){
-    var payload = { files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
+    var payload = { version: SAVE_VERSION, files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       // Read-back check: a sandboxed/opaque-origin iframe can accept a
@@ -841,7 +907,7 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if(raw){
         var data = JSON.parse(raw);
-        if(data && data.files){
+        if(data && data.files && data.version === SAVE_VERSION){
           files = data.files;
           openTabs = data.openTabs && data.openTabs.length ? data.openTabs : Object.keys(files);
           activeFile = data.activeFile && files[data.activeFile] ? data.activeFile : openTabs[0];
@@ -850,8 +916,8 @@
           return;
         }
       }
-    } catch(e){ /* fall through to defaults */ }
-    seedDefaults();
+    } catch(e){ /* fall through to empty */ }
+    startWithNoFiles();
     cb();
   }
 
@@ -1365,9 +1431,36 @@
     codeInput.selectionStart = codeInput.selectionEnd = start + 2 + inner.length;
   }
 
+  // Single entry point for "a bracket/quote/paren character just got
+  // typed" — shared by the real keyboard (via beforeinput below) and the
+  // symbol toolbar buttons, so both paths get identical pairing behavior
+  // instead of the toolbar just dumping in a lone character. Returns
+  // true if it fully handled the character (caller should not also do a
+  // plain insert); false means "not one of ours, insert it normally".
+  function handleTypedChar(ch){
+    var collapsed = codeInput.selectionStart === codeInput.selectionEnd;
+    if(ch === '{'){
+      insertBraceBlock();
+      return true;
+    }
+    if(SYMMETRIC_PAIR[ch] && collapsed){
+      if(!skipOverIfNext(ch)) insertPair(ch, ch);
+      return true;
+    }
+    if(OPEN_TO_CLOSE[ch] && collapsed){
+      insertPair(ch, OPEN_TO_CLOSE[ch]);
+      return true;
+    }
+    if(CLOSE_ONLY[ch] && collapsed){
+      return skipOverIfNext(ch);
+    }
+    return false;
+  }
+
+  // Tab and Enter behave consistently through keydown across browsers,
+  // so they stay here.
   codeInput.addEventListener('keydown', function(e){
     var key = e.key;
-    var collapsed = codeInput.selectionStart === codeInput.selectionEnd;
     if(key === 'Tab'){
       e.preventDefault();
       var start = codeInput.selectionStart, end = codeInput.selectionEnd;
@@ -1378,19 +1471,20 @@
     } else if(key === 'Enter'){
       e.preventDefault();
       if(handleEnterKey()) codeInput.dispatchEvent(new Event('input'));
-    } else if(key === '{'){
-      e.preventDefault();
-      insertBraceBlock();
-      codeInput.dispatchEvent(new Event('input'));
-    } else if(SYMMETRIC_PAIR[key] && collapsed){
-      e.preventDefault();
-      if(!skipOverIfNext(key)) insertPair(key, key);
-      codeInput.dispatchEvent(new Event('input'));
-    } else if(OPEN_TO_CLOSE[key] && collapsed){
-      e.preventDefault();
-      insertPair(key, OPEN_TO_CLOSE[key]);
-      codeInput.dispatchEvent(new Event('input'));
-    } else if(CLOSE_ONLY[key] && collapsed && skipOverIfNext(key)){
+    }
+  });
+
+  // Bracket/quote pairing runs on beforeinput rather than keydown.
+  // Android's on-screen keyboards (Gboard included) route regular
+  // character keys through the IME, and keydown for those often shows up
+  // as a generic "Unidentified" key with no usable info — that's exactly
+  // why typing these directly wasn't triggering anything. beforeinput's
+  // e.data carries the actual character being inserted regardless of
+  // which keyboard produced it, so it works the same on a phone as it
+  // does with a physical keyboard.
+  codeInput.addEventListener('beforeinput', function(e){
+    if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
+    if(handleTypedChar(e.data)){
       e.preventDefault();
       codeInput.dispatchEvent(new Event('input'));
     }
@@ -1407,10 +1501,12 @@
     b.textContent = sym;
     b.addEventListener('click', function(){
       if(codeInput.disabled) return;
-      var start = codeInput.selectionStart, end = codeInput.selectionEnd;
-      var val = codeInput.value;
-      codeInput.value = val.slice(0, start) + sym + val.slice(end);
-      codeInput.selectionStart = codeInput.selectionEnd = start + sym.length;
+      if(!handleTypedChar(sym)){
+        var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+        var val = codeInput.value;
+        codeInput.value = val.slice(0, start) + sym + val.slice(end);
+        codeInput.selectionStart = codeInput.selectionEnd = start + sym.length;
+      }
       codeInput.focus();
       codeInput.dispatchEvent(new Event('input'));
     });
@@ -1592,10 +1688,12 @@
     showToast('Renamed to ' + newName);
   }
 
+  var emptyStateEl = document.getElementById('emptyState');
   function renderAll(){
     renderTabs();
     renderTitle();
     renderEditor();
+    emptyStateEl.classList.toggle('show', Object.keys(files).length === 0);
   }
 
   /* ============================================================
@@ -2145,6 +2243,10 @@
   document.getElementById('previewClose').addEventListener('click', hidePreviewOverlay);
   document.getElementById('previewReload').addEventListener('click', runPreview);
   document.getElementById('previewConsoleClear').addEventListener('click', clearPreviewConsole);
+  document.getElementById('previewConsoleClose').addEventListener('click', function(){
+    previewConsolePanel.classList.remove('show');
+    setPreviewCheck('chkConsole', false);
+  });
 
   previewMoreBtn.addEventListener('click', function(e){
     e.stopPropagation();
@@ -2213,6 +2315,7 @@
     }
   }
   document.getElementById('terminalClear').addEventListener('click', function(){ terminalBody.innerHTML = ''; });
+  document.getElementById('terminalClose').addEventListener('click', function(){ terminalPanel.classList.remove('show'); });
 
   function termPrint(text){
     var line = document.createElement('div');
@@ -2259,6 +2362,19 @@
     codeInput.focus();
   });
 
+  // Focusing the editor is what actually triggers a phone's on-screen
+  // keyboard, so it's a more direct signal than trying to measure the
+  // screen shrinking — that measurement can be unreliable when this
+  // page is embedded inside another app's own preview panel rather
+  // than running as a standalone page, since the panel's size is
+  // controlled by the host, not by the keyboard itself.
+  codeInput.addEventListener('focus', function(){
+    fabEl.classList.add('fab-hidden');
+  });
+  codeInput.addEventListener('blur', function(){
+    fabEl.classList.remove('fab-hidden');
+  });
+
   /* ============================================================
      KEYBOARD-AWARE VIEWPORT
      Mobile browsers don't shrink 100vh when the on-screen keyboard
@@ -2267,10 +2383,11 @@
      keyboard. window.visualViewport reports the real visible height,
      so we resize #phone to match it: the layout shrinks to sit
      exactly above the keyboard while it's open, and grows back to
-     full height the moment it closes. The same height gap tells us
-     whether the keyboard is open, which we use to hide the fab —
-     it only makes sense as a "scroll the editor" shortcut when the
-     keyboard isn't already covering half the screen.
+     full height the moment it closes. Where this signal IS reliable
+     (a standalone page in a real mobile browser) it also backs up the
+     focus/blur check above for the fab, since it can catch keyboard
+     changes the focus check wouldn't (e.g. a hardware keyboard's
+     autocomplete bar changing the viewport without ever blurring).
   ============================================================ */
   var phoneEl = document.getElementById('phone');
 
@@ -2280,7 +2397,8 @@
 
   function updateFabVisibility(vvHeight){
     var keyboardOpen = (window.innerHeight - vvHeight) > 150;
-    fabEl.classList.toggle('fab-hidden', keyboardOpen);
+    if(keyboardOpen) fabEl.classList.add('fab-hidden');
+    else if(document.activeElement !== codeInput) fabEl.classList.remove('fab-hidden');
   }
 
   function initViewportHandling(){
