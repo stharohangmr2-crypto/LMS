@@ -674,7 +674,7 @@
       <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
     </div>
     <div class="empty-state" id="emptyState">
-      No files yet.<br>Open the menu (&#75757566;) and tap <br>New file</br> to get started.
+      No files yet.<br>Open the menu (&#9776;) and tap <br>New file <br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
   </div>
@@ -705,7 +705,9 @@
 
   <!-- More popup menu -->
   <div class="popup-menu" id="moreMenu">
-    <div class="popup-item" data-action="wrap">Toggle word wrap</div>
+    <div class="popup-item" data-action="wrap">
+      <span class="pi-icon">&#8617;</span><span class="pi-label">Word wrap</span><span class="pi-check" id="chkWordWrap"></span>
+    </div>
     <div class="popup-item" data-action="beautify">Beautify indentation</div>
     <div class="popup-item" data-action="selectall">Select all</div>
     <div class="popup-item" data-action="help2">Connect syntax help</div>
@@ -1748,6 +1750,7 @@
   var moreMenu = document.getElementById('moreMenu');
   document.getElementById('moreBtn').addEventListener('click', function(e){
     e.stopPropagation();
+    setMenuCheck('chkWordWrap', wordWrap);
     moreMenu.classList.toggle('show');
   });
   document.addEventListener('click', function(e){
@@ -1760,7 +1763,7 @@
     if(!item) return;
     var action = item.dataset.action;
     moreMenu.classList.remove('show');
-    if(action === 'wrap'){ wordWrap = !wordWrap; applyWrapSetting(); showToast('Word wrap ' + (wordWrap ? 'on' : 'off')); }
+    if(action === 'wrap'){ wordWrap = !wordWrap; applyWrapSetting(); setMenuCheck('chkWordWrap', wordWrap); showToast('Word wrap ' + (wordWrap ? 'on' : 'off')); }
     else if(action === 'beautify'){ beautifyActive(); }
     else if(action === 'selectall'){ codeInput.focus(); codeInput.select(); }
     else if(action === 'help2'){ openModal('help'); }
@@ -2028,7 +2031,6 @@
   var pyLoading = document.getElementById('pyLoading');
   var deviceMode = false;
   var cacheDisabled = false;
-  var previewHistoryActive = false;
 
   // Switches the preview overlay between "showing a live HTML/CSS/JS page"
   // and "showing Python's printed output" — there's no page to render for a
@@ -2079,14 +2081,18 @@
     previewFrame = fresh;
   }
 
-  // Opening preview pushes a history entry so the phone's back gesture/
-  // button closes preview instead of leaving the app (see popstate below).
+  // Plain show/hide. This used to also push/pop a history entry so the
+  // phone's physical back button would close preview instead of leaving
+  // the app — removed because history.pushState()/history.back() are
+  // unreliable outside a normal http(s) page, and this file is commonly
+  // opened via a content:// URL (Android's Downloads viewer) or a raw
+  // file:// path, neither of which is a normal page load. In that setting
+  // history.back() could trigger a real reload of the whole app instead of
+  // a same-page state change — which looks exactly like "the app
+  // refreshes for no reason" and can lose anything not yet auto-saved.
+  // The X button and Exit menu item are enough to close preview on their own.
   function showPreviewOverlay(){
     previewOverlay.classList.add('show');
-    if(!previewHistoryActive){
-      previewHistoryActive = true;
-      history.pushState({ csPreview: true }, '');
-    }
   }
 
   // Used by the X button and the Exit menu item.
@@ -2094,20 +2100,7 @@
     previewOverlay.classList.remove('show');
     previewConsolePanel.classList.remove('show');
     previewMoreMenu.classList.remove('show');
-    if(previewHistoryActive){
-      previewHistoryActive = false;
-      history.back();
-    }
   }
-
-  window.addEventListener('popstate', function(){
-    if(previewHistoryActive){
-      previewHistoryActive = false;
-      previewOverlay.classList.remove('show');
-      previewConsolePanel.classList.remove('show');
-      previewMoreMenu.classList.remove('show');
-    }
-  });
 
   function runPreview(){
     var active = files[activeFile];
@@ -2228,15 +2221,15 @@
     }
   }
 
-  function setPreviewCheck(id, on){
+  function setMenuCheck(id, on){
     var el = document.getElementById(id);
     if(el) el.classList.toggle('checked', !!on);
   }
 
   function syncPreviewMenuChecks(){
-    setPreviewCheck('chkDevices', deviceMode);
-    setPreviewCheck('chkCache', cacheDisabled);
-    setPreviewCheck('chkConsole', previewConsolePanel.classList.contains('show'));
+    setMenuCheck('chkDevices', deviceMode);
+    setMenuCheck('chkCache', cacheDisabled);
+    setMenuCheck('chkConsole', previewConsolePanel.classList.contains('show'));
   }
 
   runBtn.addEventListener('click', runPreview);
@@ -2245,7 +2238,7 @@
   document.getElementById('previewConsoleClear').addEventListener('click', clearPreviewConsole);
   document.getElementById('previewConsoleClose').addEventListener('click', function(){
     previewConsolePanel.classList.remove('show');
-    setPreviewCheck('chkConsole', false);
+    setMenuCheck('chkConsole', false);
   });
 
   previewMoreBtn.addEventListener('click', function(e){
@@ -2265,16 +2258,16 @@
     if(action === 'devices'){
       deviceMode = !deviceMode;
       previewBody.classList.toggle('device-mode', deviceMode);
-      setPreviewCheck('chkDevices', deviceMode);
+      setMenuCheck('chkDevices', deviceMode);
       showToast('Device frame ' + (deviceMode ? 'on' : 'off'));
     } else if(action === 'cache'){
       cacheDisabled = !cacheDisabled;
-      setPreviewCheck('chkCache', cacheDisabled);
+      setMenuCheck('chkCache', cacheDisabled);
       showToast('Cache ' + (cacheDisabled ? 'disabled' : 'enabled'));
     } else if(action === 'consoletoggle'){
       var showing = previewConsolePanel.classList.toggle('show');
       if(showing) previewConsoleDot.classList.remove('show');
-      setPreviewCheck('chkConsole', showing);
+      setMenuCheck('chkConsole', showing);
     } else if(action === 'openbrowser'){
       previewMoreMenu.classList.remove('show');
       openPreviewInBrowser();
