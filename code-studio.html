@@ -49,6 +49,7 @@
 
   html, body {
     margin: 0; padding: 0; height: 100%;
+    overflow: hidden;
     background: #0e1014;
     font-family: var(--font-ui);
     -webkit-tap-highlight-color: transparent;
@@ -279,13 +280,53 @@
   /* ---------- Bottom symbol toolbar ---------- */
   .symbol-toolbar {
     display: flex;
-    overflow-x: auto;
+    align-items: center;
     background: var(--bg-topbar);
     border-top: 1px solid var(--divider);
     flex-shrink: 0;
-    scrollbar-width: none;
   }
-  .symbol-toolbar::-webkit-scrollbar { display: none; }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 6px 2px 6px 6px;
+    gap: 2px;
+  }
+  .tb-action-btn {
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    color: var(--text-main);
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.12s ease, opacity 0.12s ease;
+  }
+  .tb-action-btn:active { background: rgba(255,255,255,0.14); }
+  .tb-action-btn.disabled { opacity: 0.3; pointer-events: none; }
+  .ctrl-btn {
+    height: 34px;
+    padding: 0 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--text-main);
+    background: rgba(255,255,255,0.05);
+    border-radius: var(--radius-pill);
+    flex-shrink: 0;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .ctrl-btn:active { background: rgba(255,255,255,0.14); }
+  .ctrl-btn.armed { background: var(--accent); color: #fff; }
+  .toolbar-divider { width: 1px; height: 22px; background: var(--divider); margin: 0 5px; flex-shrink: 0; }
+  .symbol-toolbar-scroll {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: 1;
+    min-width: 0;
+  }
+  .symbol-toolbar-scroll::-webkit-scrollbar { display: none; }
   .sym-btn {
     color: var(--text-main);
     font-family: var(--font-code);
@@ -730,13 +771,21 @@
       <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
     </div>
     <div class="empty-state" id="emptyState">
-      No files yet.<br>Open the menu (&#9776;) and tap <b>New file</b> to get started.
+      No files yet.<br>Open the menu (&#9776;) and tap <br>New file<br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
   </div>
 
   <!-- Bottom symbol toolbar -->
-  <div class="symbol-toolbar" id="symbolToolbar"></div>
+  <div class="symbol-toolbar">
+    <div class="toolbar-actions">
+      <div class="ctrl-btn" id="btnCtrl" title="Ctrl">Ctrl</div>
+      <span class="toolbar-divider"></span>
+      <div class="tb-action-btn" id="btnOutdent" title="Outdent">&#8676;</div>
+      <div class="tb-action-btn" id="btnIndent" title="Indent">&#8677;</div>
+    </div>
+    <div class="symbol-toolbar-scroll" id="symbolToolbar"></div>
+  </div>
 
   <!-- Drawer -->
   <div class="scrim" id="drawerScrim"></div>
@@ -958,8 +1007,17 @@
   var SAVE_VERSION = 2;
   var storageBroken = false;
   function persist(){
+    // Undo/redo history is intentionally excluded here — it's an
+    // in-session convenience, not something that needs to survive a
+    // reload, and each file can carry up to 100 full-content snapshots
+    // which would otherwise needlessly bloat every single save.
+    var cleanFiles = {};
+    Object.keys(files).forEach(function(name){
+      var f = files[name];
+      cleanFiles[name] = { content: f.content, type: f.type, dirty: f.dirty, saved: f.saved };
+    });
     var payload = {
-      version: SAVE_VERSION, files: files, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
+      version: SAVE_VERSION, files: cleanFiles, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
       settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey }
     };
     try {
@@ -1398,9 +1456,57 @@
     autosaveTimer = setTimeout(persist, 500);
   }
 
+  // Undo/redo tracking. Auto-pairing, auto-indent, and the brace-block
+  // feature all work by directly overwriting codeInput.value — which
+  // resets the browser's own native undo history in most mobile browsers,
+  // so relying on that isn't an option here. This keeps its own stack per
+  // file instead, snapshotting into it on a short pause in typing rather
+  // than on every keystroke, so undo reverts a burst of typing at a time
+  // instead of one character at a time.
+  var UNDO_PAUSE_MS = 700;
+  var UNDO_MAX = 100;
+  function ensureUndoState(f){
+    if(!f.undoStack){ f.undoStack = []; f.redoStack = []; f.lastEditAt = 0; }
+  }
+  function pushUndoSnapshot(f){
+    ensureUndoState(f);
+    var now = Date.now();
+    if(now - f.lastEditAt > UNDO_PAUSE_MS || !f.undoStack.length){
+      f.undoStack.push(f.content);
+      if(f.undoStack.length > UNDO_MAX) f.undoStack.shift();
+      f.redoStack.length = 0;
+    }
+    f.lastEditAt = now;
+  }
+  function restoreSnapshot(f, content){
+    f.content = content;
+    f.dirty = true;
+    renderEditor();
+    renderTitle();
+    renderTabs();
+    persist();
+  }
+  function undoActive(){
+    var f = files[activeFile];
+    if(!f || !f.undoStack || !f.undoStack.length){ showToast('Nothing to undo'); return; }
+    f.redoStack.push(f.content);
+    var prev = f.undoStack.pop();
+    f.lastEditAt = 0; // next keystroke starts a fresh undo checkpoint
+    restoreSnapshot(f, prev);
+  }
+  function redoActive(){
+    var f = files[activeFile];
+    if(!f || !f.redoStack || !f.redoStack.length){ showToast('Nothing to redo'); return; }
+    f.undoStack.push(f.content);
+    var next = f.redoStack.pop();
+    f.lastEditAt = 0;
+    restoreSnapshot(f, next);
+  }
+
   codeInput.addEventListener('input', function(){
     var f = files[activeFile];
     if(!f) return;
+    pushUndoSnapshot(f);
     f.content = codeInput.value;
     f.dirty = true;
     highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
@@ -1409,6 +1515,55 @@
     renderTabs();
     schedulePersist();
   });
+
+  // Tab/Shift+Tab-style indent and outdent, done as tap buttons instead
+  // of keyboard shortcuts — there's no Ctrl/Shift modifier to hang those
+  // off of on a phone's on-screen keyboard. Acts on every line touched by
+  // the current selection, or just the current line if nothing's selected.
+  var INDENT_UNIT = '  '; // matches what the Tab key already inserts
+  function selectedLineRange(val, start, end){
+    var lineStart = val.lastIndexOf('\n', start - 1) + 1;
+    var lineEnd = val.indexOf('\n', Math.max(end - 1, lineStart));
+    if(lineEnd === -1) lineEnd = val.length;
+    return { lineStart: lineStart, lineEnd: lineEnd };
+  }
+  function indentSelection(){
+    var f = files[activeFile];
+    if(!f) return;
+    var val = codeInput.value;
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var r = selectedLineRange(val, start, end);
+    var block = val.slice(r.lineStart, r.lineEnd);
+    var indented = block.split('\n').map(function(line){ return INDENT_UNIT + line; }).join('\n');
+    codeInput.value = val.slice(0, r.lineStart) + indented + val.slice(r.lineEnd);
+    codeInput.selectionStart = start + INDENT_UNIT.length;
+    codeInput.selectionEnd = end + (indented.length - block.length);
+    codeInput.dispatchEvent(new Event('input'));
+  }
+  function outdentSelection(){
+    var f = files[activeFile];
+    if(!f) return;
+    var val = codeInput.value;
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var r = selectedLineRange(val, start, end);
+    var block = val.slice(r.lineStart, r.lineEnd);
+    var firstLineRemoved = 0;
+    var lines = block.split('\n').map(function(line, idx){
+      var removed = 0;
+      if(line.slice(0, 2) === '  ') removed = 2;
+      else if(line[0] === ' ' || line[0] === '\t') removed = 1;
+      if(idx === 0) firstLineRemoved = removed;
+      return line.slice(removed);
+    });
+    var outdented = lines.join('\n');
+    codeInput.value = val.slice(0, r.lineStart) + outdented + val.slice(r.lineEnd);
+    var removedTotal = block.length - outdented.length;
+    codeInput.selectionStart = Math.max(r.lineStart, start - firstLineRemoved);
+    codeInput.selectionEnd = Math.max(codeInput.selectionStart, end - removedTotal);
+    codeInput.dispatchEvent(new Event('input'));
+  }
+  document.getElementById('btnIndent').addEventListener('click', function(){ codeInput.focus(); indentSelection(); });
+  document.getElementById('btnOutdent').addEventListener('click', function(){ codeInput.focus(); outdentSelection(); });
 
   // Mobile browsers rarely fire beforeunload reliably when a tab is
   // backgrounded or the app is swiped away, so visibilitychange is the
@@ -1424,8 +1579,6 @@
     clearTimeout(autosaveTimer);
     persist();
   });
-
-  var INDENT_UNIT = '  '; // matches what the Tab key already inserts
 
   // HTML elements that never wrap child content, so a line ending in one
   // of these shouldn't push the next line in a tab stop.
@@ -1546,10 +1699,114 @@
     return false;
   }
 
+  // Select-all/copy/cut/paste, reachable two ways: arming the on-screen
+  // Ctrl button then tapping the letter (phones have no physical Ctrl to
+  // hold down), or the real Ctrl/Cmd+letter shortcut on an actual keyboard.
+  function selectAllText(){
+    codeInput.focus();
+    codeInput.select();
+  }
+  function copySelection(){
+    if(codeInput.selectionStart === codeInput.selectionEnd) return;
+    codeInput.focus();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    if(ok){ showToast('Copied'); return; }
+    var text = codeInput.value.slice(codeInput.selectionStart, codeInput.selectionEnd);
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){ showToast('Copied'); }).catch(function(){ showToast('Copy blocked here'); });
+      } else {
+        showToast('Copy blocked here');
+      }
+    } catch(e){ showToast('Copy blocked here'); }
+  }
+  function cutSelection(){
+    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    if(start === end) return;
+    codeInput.focus();
+    var text = codeInput.value.slice(start, end);
+    var ok = false;
+    try { ok = document.execCommand('cut'); } catch(e){ ok = false; }
+    if(ok){
+      codeInput.dispatchEvent(new Event('input'));
+      showToast('Cut');
+      return;
+    }
+    // Fallback: remove the text ourselves and try to get it onto the clipboard.
+    var val = codeInput.value;
+    codeInput.value = val.slice(0, start) + val.slice(end);
+    codeInput.selectionStart = codeInput.selectionEnd = start;
+    codeInput.dispatchEvent(new Event('input'));
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function(){});
+    } catch(e){ /* clipboard write failed — the cut itself still happened */ }
+    showToast('Cut');
+  }
+  function pasteIntoEditor(){
+    codeInput.focus();
+    try {
+      if(!navigator.clipboard || !navigator.clipboard.readText){
+        showToast('Paste blocked here — try holding on the text and using Paste');
+        return;
+      }
+      navigator.clipboard.readText().then(function(text){
+        if(!text) return;
+        var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+        var val = codeInput.value;
+        codeInput.value = val.slice(0, start) + text + val.slice(end);
+        codeInput.selectionStart = codeInput.selectionEnd = start + text.length;
+        codeInput.dispatchEvent(new Event('input'));
+      }).catch(function(){
+        showToast('Paste blocked here — try holding on the text and using Paste');
+      });
+    } catch(e){
+      showToast('Paste blocked here — try holding on the text and using Paste');
+    }
+  }
+
+  // The armed/latching Ctrl button: tap it once, then tap the next
+  // letter — z/y undo/redo, a select all, c/x/v copy/cut/paste — and it's
+  // consumed as that shortcut instead of being typed. Any other key just
+  // disarms it and types normally, so it can't get "stuck" on by accident.
+  var ctrlArmed = false;
+  var CTRL_LETTERS = { z: 1, y: 1, a: 1, c: 1, x: 1, v: 1 };
+  var btnCtrl = document.getElementById('btnCtrl');
+  function setCtrlArmed(on){
+    ctrlArmed = on;
+    btnCtrl.classList.toggle('armed', on);
+  }
+  btnCtrl.addEventListener('click', function(){
+    codeInput.focus();
+    setCtrlArmed(!ctrlArmed);
+  });
+  function performCtrlShortcut(letter){
+    if(letter === 'z'){ undoActive(); return true; }
+    if(letter === 'y'){ redoActive(); return true; }
+    if(letter === 'a'){ selectAllText(); return true; }
+    if(letter === 'c'){ copySelection(); return true; }
+    if(letter === 'x'){ cutSelection(); return true; }
+    if(letter === 'v'){ pasteIntoEditor(); return true; }
+    return false;
+  }
+
   // Tab and Enter behave consistently through keydown across browsers,
-  // so they stay here.
+  // so they stay here — same for Ctrl/Cmd+letter, which only a real
+  // keyboard can send (there's no keydown equivalent for the on-screen
+  // Ctrl button, since it isn't a real modifier key).
   codeInput.addEventListener('keydown', function(e){
     var key = e.key;
+    var ctrlOrCmd = e.ctrlKey || e.metaKey;
+    if(ctrlOrCmd && (key === 'z' || key === 'Z')){
+      e.preventDefault();
+      if(e.shiftKey) redoActive(); else undoActive();
+      return;
+    }
+    if(ctrlOrCmd && (key === 'y' || key === 'Y')){
+      e.preventDefault();
+      redoActive();
+      return;
+    }
     if(key === 'Tab'){
       e.preventDefault();
       var start = codeInput.selectionStart, end = codeInput.selectionEnd;
@@ -1570,8 +1827,25 @@
   // why typing these directly wasn't triggering anything. beforeinput's
   // e.data carries the actual character being inserted regardless of
   // which keyboard produced it, so it works the same on a phone as it
-  // does with a physical keyboard.
+  // does with a physical keyboard. The armed-Ctrl check runs first here
+  // for the same reason: the on-screen Ctrl button needs the next typed
+  // character, however it was typed, not a real keydown modifier.
   codeInput.addEventListener('beforeinput', function(e){
+    if(ctrlArmed){
+      var letter = e.data && e.data.length === 1 ? e.data.toLowerCase() : '';
+      setCtrlArmed(false);
+      if(letter && CTRL_LETTERS[letter]){
+        // Block the letter first, unconditionally — then run the actual
+        // action on its own, once this beforeinput event has fully
+        // finished. Doing execCommand('cut'/'copy') or touching the
+        // clipboard API *during* this event (before it's resolved) is
+        // what was letting the plain letter slip through instead of
+        // running the shortcut.
+        e.preventDefault();
+        setTimeout(function(){ performCtrlShortcut(letter); }, 0);
+        return;
+      }
+    }
     if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
     if(handleTypedChar(e.data)){
       e.preventDefault();
@@ -2512,9 +2786,6 @@
       var update = function(){
         applyPhoneHeight(vv.height);
         updateFabVisibility(vv.height);
-        // Some browsers scroll the page slightly when the keyboard
-        // opens; keep the app pinned to the top of the viewport.
-        window.scrollTo(0, 0);
       };
       vv.addEventListener('resize', update);
       vv.addEventListener('scroll', update);
