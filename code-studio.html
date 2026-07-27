@@ -2769,8 +2769,15 @@
      autocomplete bar changing the viewport without ever blurring).
   ============================================================ */
   var phoneEl = document.getElementById('phone');
+  var lastAppliedHeight = null;
 
   function applyPhoneHeight(h){
+    // Skip no-op / sub-pixel writes. Re-setting style.height to a value
+    // that's already (near enough) applied still forces a layout
+    // recalculation, and doing that repeatedly inside a hot event loop
+    // is what was producing the flash and the keyboard closing itself.
+    if(lastAppliedHeight !== null && Math.abs(h - lastAppliedHeight) < 2) return;
+    lastAppliedHeight = h;
     phoneEl.style.height = h + 'px';
   }
 
@@ -2783,12 +2790,29 @@
   function initViewportHandling(){
     if(window.visualViewport){
       var vv = window.visualViewport;
+      var ticking = false;
       var update = function(){
+        ticking = false;
         applyPhoneHeight(vv.height);
         updateFabVisibility(vv.height);
       };
-      vv.addEventListener('resize', update);
-      vv.addEventListener('scroll', update);
+      var scheduleUpdate = function(){
+        if(ticking) return;
+        ticking = true;
+        requestAnimationFrame(update);
+      };
+      // Only 'resize' is needed to catch the keyboard opening/closing.
+      // 'scroll' fires continuously while the keyboard animates in/out
+      // (and again whenever the resulting layout change nudges the
+      // visual viewport's offset), so writing to phoneEl.style.height
+      // from both listeners set up a resize -> layout shift -> scroll
+      // -> resize feedback loop. Inside a nested iframe (this page
+      // embedded in a host app's preview panel) that loop doesn't
+      // settle on its own — the WebView eventually reads the input as
+      // unstable and drops focus, dismissing the keyboard, with a
+      // frame or two of unstyled layout flashing through as the height
+      // whips back and forth.
+      vv.addEventListener('resize', scheduleUpdate);
       update();
     } else {
       applyPhoneHeight(window.innerHeight);
