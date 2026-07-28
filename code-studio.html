@@ -1006,6 +1006,7 @@
   // ever fires once per stale save.
   var SAVE_VERSION = 2;
   var storageBroken = false;
+  var storageVerified = false;
   function persist(){
     // Undo/redo history is intentionally excluded here — it's an
     // in-session convenience, not something that needs to survive a
@@ -1020,15 +1021,22 @@
       version: SAVE_VERSION, files: cleanFiles, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
       settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey }
     };
+    var payloadStr = JSON.stringify(payload);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(STORAGE_KEY, payloadStr);
       // Read-back check: a sandboxed/opaque-origin iframe can accept a
       // setItem call without error yet not actually persist it, so a
-      // successful try/catch alone doesn't prove the save stuck.
-      if(localStorage.getItem(STORAGE_KEY) !== JSON.stringify(payload)){
-        flagStorageBroken();
-      } else if(storageBroken){
-        storageBroken = false;
+      // successful try/catch alone doesn't prove the save stuck. Only
+      // worth checking once per session, not on every single autosave —
+      // whether storage actually sticks here doesn't change keystroke
+      // to keystroke.
+      if(!storageVerified){
+        storageVerified = true;
+        if(localStorage.getItem(STORAGE_KEY) !== payloadStr){
+          flagStorageBroken();
+        } else if(storageBroken){
+          storageBroken = false;
+        }
       }
     } catch(e){
       flagStorageBroken();
@@ -1453,7 +1461,20 @@
   var autosaveTimer = null;
   function schedulePersist(){
     clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(persist, 500);
+    // persist() does a synchronous localStorage write (plus a read-back
+    // check) on the main thread. Firing that the instant this timer
+    // elapses means it lands right as you resume typing — which on
+    // Android is enough to stall the thread long enough for the
+    // keyboard's input connection to give up. Handing it to
+    // requestIdleCallback lets the browser run it whenever it's
+    // actually idle instead of forcing it into that exact moment.
+    autosaveTimer = setTimeout(function(){
+      if(window.requestIdleCallback){
+        requestIdleCallback(persist, { timeout: 1000 });
+      } else {
+        persist();
+      }
+    }, 500);
   }
 
   // Undo/redo tracking. Auto-pairing, auto-indent, and the brace-block
@@ -2773,6 +2794,12 @@
     phoneEl.style.height = h + 'px';
   }
 
+  function releasePhoneHeight(){
+    if(lastAppliedHeight === null) return;
+    lastAppliedHeight = null;
+    phoneEl.style.height = '';
+  }
+
   function updateFabVisibility(vvHeight){
     var keyboardOpen = (window.innerHeight - vvHeight) > 150;
     if(keyboardOpen) fabEl.classList.add('fab-hidden');
@@ -2785,7 +2812,26 @@
       var ticking = false;
       var update = function(){
         ticking = false;
-        applyPhoneHeight(vv.height);
+        // The viewport meta tag's interactive-widget=resizes-content
+        // only takes effect for a top-level page — it's inert when this
+        // page is nested inside another page's iframe (like a host
+        // app's preview panel). When it IS active, window.innerHeight
+        // itself shrinks to match the keyboard-adjusted layout viewport,
+        // so plain CSS (100vh) already sits correctly above the
+        // keyboard and needs no help. Applying our own height on top of
+        // that made two independent resize mechanisms fight each other
+        // the instant either one changed by a few pixels (e.g. the
+        // keyboard's suggestion strip appearing the moment you start
+        // typing) — that's what was dropping focus on a real, standalone
+        // mobile browser even though it never happened inside a preview
+        // iframe. So: only step in when window.innerHeight hasn't
+        // shrunk on its own, meaning nothing else is handling it.
+        var offset = window.innerHeight - vv.height;
+        if(offset > 40){
+          applyPhoneHeight(vv.height);
+        } else {
+          releasePhoneHeight();
+        }
         updateFabVisibility(vv.height);
       };
       var scheduleUpdate = function(){
