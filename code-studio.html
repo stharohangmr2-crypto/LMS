@@ -1508,11 +1508,18 @@
     if(!f) return;
     pushUndoSnapshot(f);
     f.content = codeInput.value;
+    var wasDirty = f.dirty;
     f.dirty = true;
     highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
     renderLineNumbers();
-    renderTitle();
-    renderTabs();
+    // renderTabs() tears down and rebuilds every tab element (plus its
+    // click listener) from scratch — only worth doing when the dirty
+    // dot is actually appearing for the first time on this file, not
+    // on every keystroke that follows.
+    if(!wasDirty){
+      renderTitle();
+      renderTabs();
+    }
     schedulePersist();
   });
 
@@ -1613,7 +1620,7 @@
     var f = files[activeFile];
     if(!f) return false;
     var val = codeInput.value;
-    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var start = codeInput.selectionStart;
     var lineStart = val.lastIndexOf('\n', start - 1) + 1;
     var currentLine = val.slice(lineStart, start);
     var baseIndent = /^[ \t]*/.exec(currentLine)[0];
@@ -1621,9 +1628,7 @@
     // Plain spaces, inserted like any other typed character — backspace
     // removes them exactly the same way it removes anything else typed.
     var insertion = '\n' + baseIndent + extra;
-    codeInput.value = val.slice(0, start) + insertion + val.slice(end);
-    var newPos = start + insertion.length;
-    codeInput.selectionStart = codeInput.selectionEnd = newPos;
+    document.execCommand('insertText', false, insertion);
     return true;
   }
 
@@ -1639,10 +1644,8 @@
   var CLOSE_ONLY = { '>': 1, ')': 1 };
 
   function insertPair(open, close){
-    var val = codeInput.value;
-    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
-    codeInput.value = val.slice(0, start) + open + close + val.slice(end);
-    codeInput.selectionStart = codeInput.selectionEnd = start + open.length;
+    document.execCommand('insertText', false, open + close);
+    codeInput.selectionStart = codeInput.selectionEnd = codeInput.selectionEnd - close.length;
   }
 
   // Typing a closing character while the cursor is already sitting right
@@ -1663,13 +1666,13 @@
   // blank indented line plus a matching "}", cursor on the blank line.
   function insertBraceBlock(){
     var val = codeInput.value;
-    var start = codeInput.selectionStart, end = codeInput.selectionEnd;
+    var start = codeInput.selectionStart;
     var lineStart = val.lastIndexOf('\n', start - 1) + 1;
     var currentLine = val.slice(lineStart, start);
     var baseIndent = /^[ \t]*/.exec(currentLine)[0];
     var inner = baseIndent + INDENT_UNIT;
     var insertion = '{\n' + inner + '\n' + baseIndent + '}';
-    codeInput.value = val.slice(0, start) + insertion + val.slice(end);
+    document.execCommand('insertText', false, insertion);
     codeInput.selectionStart = codeInput.selectionEnd = start + 2 + inner.length;
   }
 
@@ -1734,9 +1737,7 @@
       return;
     }
     // Fallback: remove the text ourselves and try to get it onto the clipboard.
-    var val = codeInput.value;
-    codeInput.value = val.slice(0, start) + val.slice(end);
-    codeInput.selectionStart = codeInput.selectionEnd = start;
+    document.execCommand('delete');
     codeInput.dispatchEvent(new Event('input'));
     try {
       if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function(){});
@@ -1752,10 +1753,7 @@
       }
       navigator.clipboard.readText().then(function(text){
         if(!text) return;
-        var start = codeInput.selectionStart, end = codeInput.selectionEnd;
-        var val = codeInput.value;
-        codeInput.value = val.slice(0, start) + text + val.slice(end);
-        codeInput.selectionStart = codeInput.selectionEnd = start + text.length;
+        document.execCommand('insertText', false, text);
         codeInput.dispatchEvent(new Event('input'));
       }).catch(function(){
         showToast('Paste blocked here — try holding on the text and using Paste');
@@ -1809,10 +1807,7 @@
     }
     if(key === 'Tab'){
       e.preventDefault();
-      var start = codeInput.selectionStart, end = codeInput.selectionEnd;
-      var val = codeInput.value;
-      codeInput.value = val.slice(0, start) + '  ' + val.slice(end);
-      codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+      document.execCommand('insertText', false, '  ');
       codeInput.dispatchEvent(new Event('input'));
     } else if(key === 'Enter'){
       e.preventDefault();
@@ -1864,13 +1859,10 @@
     b.textContent = sym;
     b.addEventListener('click', function(){
       if(codeInput.disabled) return;
-      if(!handleTypedChar(sym)){
-        var start = codeInput.selectionStart, end = codeInput.selectionEnd;
-        var val = codeInput.value;
-        codeInput.value = val.slice(0, start) + sym + val.slice(end);
-        codeInput.selectionStart = codeInput.selectionEnd = start + sym.length;
-      }
       codeInput.focus();
+      if(!handleTypedChar(sym)){
+        document.execCommand('insertText', false, sym);
+      }
       codeInput.dispatchEvent(new Event('input'));
     });
     symToolbar.appendChild(b);
