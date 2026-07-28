@@ -553,6 +553,7 @@
   .setting-row.column { flex-direction: column; align-items: stretch; gap: 10px; }
   .setting-row-top { display: flex; align-items: center; justify-content: space-between; }
   .setting-value { color: var(--accent); font-weight: 700; font-size: 13px; font-family: var(--font-code); }
+  .setting-desc { color: var(--text-dim); font-size: 12px; line-height: 1.4; }
   .font-slider {
     -webkit-appearance: none;
     appearance: none;
@@ -903,6 +904,14 @@
   var wordWrap = false;
   var fontSize = 15;
   var fontStyleKey = 'mono';
+  // When off (the default), every keystroke — including brackets and
+  // quotes — goes straight through the textarea untouched: nothing here
+  // ever calls preventDefault or intercepts a character before it's
+  // committed. When on, typing gets bracket/quote auto-pairing,
+  // auto-indent on Enter, and Tab-inserts-spaces, at the cost of that
+  // interception, which on some Android devices can make the on-screen
+  // keyboard less stable.
+  var typingHelpers = false;
   // Every option here uses only built-in generic CSS font families
   // (monospace/serif/sans-serif/cursive) or very common OS font names as a
   // first choice — there's no @font-face/network font loading in this
@@ -1020,7 +1029,7 @@
     });
     var payload = {
       version: SAVE_VERSION, files: cleanFiles, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
-      settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey }
+      settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey, typingHelpers: typingHelpers }
     };
     var payloadStr = JSON.stringify(payload);
     try {
@@ -1067,6 +1076,7 @@
             fontSize = data.settings.fontSize || fontSize;
             document.documentElement.style.setProperty('--code-size', fontSize + 'px');
             applyFontStyle(data.settings.fontStyleKey || 'mono');
+            typingHelpers = !!data.settings.typingHelpers;
           }
           cb();
           return;
@@ -1851,10 +1861,10 @@
       redoActive();
       return;
     }
-    if(key === 'Tab'){
+    if(typingHelpers && key === 'Tab'){
       e.preventDefault();
       document.execCommand('insertText', false, '  ');
-    } else if(key === 'Enter'){
+    } else if(typingHelpers && key === 'Enter'){
       e.preventDefault();
       handleEnterKey();
     }
@@ -1886,6 +1896,7 @@
         return;
       }
     }
+    if(!typingHelpers) return;
     if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
     if(handleTypedChar(e.data)){
       e.preventDefault();
@@ -2359,6 +2370,26 @@
     });
     wrapRow.appendChild(sw);
 
+    var helpersRow = document.createElement('div');
+    helpersRow.className = 'setting-row column';
+    var helpersTop = document.createElement('div');
+    helpersTop.className = 'setting-row-top';
+    helpersTop.innerHTML = '<span class="setting-label">Typing helpers</span>';
+    var helpersSw = document.createElement('div');
+    helpersSw.className = 'switch' + (typingHelpers ? ' on' : '');
+    helpersSw.innerHTML = '<div class="knob"></div>';
+    helpersSw.addEventListener('click', function(){
+      typingHelpers = !typingHelpers;
+      helpersSw.classList.toggle('on', typingHelpers);
+      persist();
+    });
+    helpersTop.appendChild(helpersSw);
+    var helpersDesc = document.createElement('div');
+    helpersDesc.className = 'setting-desc';
+    helpersDesc.textContent = 'Auto-pair brackets/quotes, auto-indent on Enter, Tab inserts spaces. Off by default — on some phones this can make the keyboard less stable while typing.';
+    helpersRow.appendChild(helpersTop);
+    helpersRow.appendChild(helpersDesc);
+
     var fontRow = document.createElement('div');
     fontRow.className = 'setting-row column';
     var fontTop = document.createElement('div');
@@ -2403,6 +2434,7 @@
 
     modalCard.appendChild(title);
     modalCard.appendChild(wrapRow);
+    modalCard.appendChild(helpersRow);
     modalCard.appendChild(fontRow);
     modalCard.appendChild(styleRow);
   }
