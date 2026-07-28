@@ -363,6 +363,67 @@
     pointer-events: none;
   }
 
+  /* ---------- Debug badge & log ---------- */
+  .debug-badge {
+    position: absolute;
+    left: 14px;
+    bottom: 54px;
+    min-width: 42px; height: 42px;
+    padding: 0 10px;
+    border-radius: 21px;
+    background: #2f333c;
+    border: 1px solid var(--divider);
+    color: var(--text-dim);
+    display: flex; align-items: center; justify-content: center;
+    gap: 5px;
+    font-size: 12px;
+    font-family: var(--font-code);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    z-index: 32;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .debug-badge.alert {
+    background: #4a1f22;
+    border-color: #d9534f;
+    color: #ff9d99;
+  }
+  .debug-badge .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .debug-badge.alert .dot { background: #ff5a52; }
+  .debug-log {
+    background: #14161a;
+    border: 1px solid var(--divider);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: var(--font-code);
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 50vh;
+    overflow-y: auto;
+    color: var(--text-dim);
+  }
+  .debug-log .line-err { color: #ff8a80; }
+  .debug-log .line-blur { color: #ffc233; }
+  .debug-log .line-focus { color: #7fd88a; }
+  .debug-row { display: flex; gap: 8px; margin-top: 12px; }
+  .debug-row button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider);
+    background: #2a2e36;
+    color: var(--text-main);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .debug-row button.primary { background: var(--accent); color: #1b1e24; border-color: var(--accent); }
+  .debug-copied { color: var(--accent); font-size: 12px; text-align: center; margin-top: 8px; height: 14px; }
+
   /* ---------- Overlays / Drawer ---------- */
   .scrim {
     position: absolute; inset: 0;
@@ -776,6 +837,7 @@
       No files yet.<br>Open the menu (&#9776;) and tap <br>New file<br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
+    <div class="debug-badge" id="debugBadge"><div class="dot"></div><span id="debugBadgeCount">log</span></div>
   </div>
 
   <!-- Bottom symbol toolbar -->
@@ -893,6 +955,58 @@
 
 <script>
 (function(){
+
+  /* ============================================================
+     DEBUG LOG
+     A rolling, timestamped trace of exactly what happens around
+     every keystroke — input events (with how long each one took to
+     handle), focus/blur, viewport size changes, and any JS error —
+     so a report can be "here's the log" instead of "it broke again".
+     Registered first, before anything else, so it also catches
+     errors during startup.
+  ============================================================ */
+  var DEBUG_LOG = [];
+  var DEBUG_LOG_MAX = 400;
+  var debugT0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  var debugAlert = false;
+
+  function debugNow(){
+    return (((window.performance && performance.now) ? performance.now() : Date.now()) - debugT0).toFixed(1);
+  }
+  function logDebug(tag, detail){
+    DEBUG_LOG.push({ t: debugNow(), tag: tag, detail: detail || '' });
+    if(DEBUG_LOG.length > DEBUG_LOG_MAX) DEBUG_LOG.shift();
+    refreshDebugBadge();
+  }
+  function flagDebugAlert(){
+    debugAlert = true;
+    refreshDebugBadge();
+  }
+  function refreshDebugBadge(){
+    var badge = document.getElementById('debugBadge');
+    var count = document.getElementById('debugBadgeCount');
+    if(!badge || !count) return;
+    count.textContent = debugAlert ? ('!' + DEBUG_LOG.length) : String(DEBUG_LOG.length);
+    badge.classList.toggle('alert', debugAlert);
+  }
+  function vvHeightNow(){
+    return window.visualViewport ? Math.round(window.visualViewport.height) : -1;
+  }
+
+  window.addEventListener('error', function(e){
+    var msg = (e && e.message) || 'unknown error';
+    var where = (e && e.filename) ? (' @' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno) : '';
+    var stack = (e && e.error && e.error.stack) ? ('\n' + e.error.stack) : '';
+    logDebug('JS ERROR', msg + where + stack);
+    flagDebugAlert();
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var reason = e && e.reason;
+    var msg = (reason && reason.message) ? reason.message : String(reason);
+    var stack = (reason && reason.stack) ? ('\n' + reason.stack) : '';
+    logDebug('PROMISE REJECTION', msg + stack);
+    flagDebugAlert();
+  });
 
   /* ============================================================
      STATE
@@ -1018,6 +1132,7 @@
   var storageBroken = false;
   var storageVerified = false;
   function persist(){
+    var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     // Undo/redo history is intentionally excluded here — it's an
     // in-session convenience, not something that needs to survive a
     // reload, and each file can carry up to 100 full-content snapshots
@@ -1051,6 +1166,8 @@
     } catch(e){
       flagStorageBroken();
     }
+    var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
+    logDebug('PERSIST', 'tookMs=' + __ms + ' payloadBytes=' + payloadStr.length);
   }
 
   var storageWarningShown = false;
@@ -1542,16 +1659,21 @@
     // or a single insertion that happens to fire 'input' more than once).
     if(renderTicking) return;
     renderTicking = true;
+    var __scheduledAt = debugNow();
     requestAnimationFrame(function(){
+      var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
       renderTicking = false;
       var f = files[activeFile];
       if(!f) return;
       highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
       renderLineNumbers();
+      var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
+      logDebug('RENDER', 'tookMs=' + __ms + ' scheduledAtT=' + __scheduledAt + ' contentLen=' + f.content.length);
     });
   }
 
-  codeInput.addEventListener('input', function(){
+  codeInput.addEventListener('input', function(e){
+    var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     var f = files[activeFile];
     if(!f) return;
     pushUndoSnapshot(f);
@@ -1580,7 +1702,10 @@
       renderTabs();
     }
     schedulePersist();
+    var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
+    logDebug('INPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' handlerMs=' + __ms + ' len=' + f.content.length);
   });
+
 
   // Tab/Shift+Tab-style indent and outdent, done as tap buttons instead
   // of keyboard shortcuts — there's no Ctrl/Shift modifier to hang those
@@ -1892,16 +2017,24 @@
         // what was letting the plain letter slip through instead of
         // running the shortcut.
         e.preventDefault();
+        logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' ctrlShortcut=' + letter + ' prevented=true');
         setTimeout(function(){ performCtrlShortcut(letter); }, 0);
         return;
       }
     }
-    if(!typingHelpers) return;
-    if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
-    if(handleTypedChar(e.data)){
-      e.preventDefault();
+    if(!typingHelpers){
+      logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' typingHelpers=false prevented=false');
+      return;
     }
+    if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1){
+      logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' (ignored, not single-char insertText)');
+      return;
+    }
+    var __prevented = handleTypedChar(e.data);
+    if(__prevented) e.preventDefault();
+    logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' prevented=' + __prevented);
   });
+
 
   /* ============================================================
      SYMBOL TOOLBAR
@@ -2211,6 +2344,7 @@
     else if(kind === 'find') renderFindModal();
     else if(kind === 'settings') renderSettingsModal();
     else if(kind === 'help') renderHelpModal();
+    else if(kind === 'debug') renderDebugModal();
     // Modals with a text field the user types into anchor near the top of
     // the screen instead of the bottom, so the on-screen keyboard can't
     // cover the field — independent of whatever the viewport-resize logic
@@ -2437,6 +2571,88 @@
     modalCard.appendChild(helpersRow);
     modalCard.appendChild(fontRow);
     modalCard.appendChild(styleRow);
+  }
+
+  function formatDebugLog(){
+    if(!DEBUG_LOG.length) return '(empty — type something first, then open this again)';
+    return DEBUG_LOG.map(function(entry){
+      return '[' + entry.t + 'ms] ' + entry.tag + (entry.detail ? ('  ' + entry.detail) : '');
+    }).join('\n');
+  }
+
+  function renderDebugModal(){
+    var title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = 'Debug log';
+
+    var desc = document.createElement('div');
+    desc.className = 'setting-desc';
+    desc.style.marginBottom = '10px';
+    desc.textContent = 'Type slowly until the keyboard closes, then come straight back here and copy this — it\u2019s a timestamped trace of everything that happened right up to that moment.';
+
+    var logBox = document.createElement('div');
+    logBox.className = 'debug-log';
+    logBox.id = 'debugLogBox';
+    logBox.textContent = formatDebugLog();
+
+    var row = document.createElement('div');
+    row.className = 'debug-row';
+    var copyBtn = document.createElement('button');
+    copyBtn.className = 'primary';
+    copyBtn.textContent = 'Copy log';
+    var clearBtn = document.createElement('button');
+    clearBtn.textContent = 'Clear';
+    row.appendChild(copyBtn);
+    row.appendChild(clearBtn);
+
+    var copiedMsg = document.createElement('div');
+    copiedMsg.className = 'debug-copied';
+    copiedMsg.id = 'debugCopiedMsg';
+
+    copyBtn.addEventListener('click', function(){
+      var text = formatDebugLog();
+      var done = function(ok){
+        copiedMsg.textContent = ok ? 'Copied — paste it in the chat' : 'Couldn\u2019t copy automatically — select the text above and copy manually';
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){ done(true); }).catch(function(){
+          fallbackCopy(text, done);
+        });
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+
+    function fallbackCopy(text, done){
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(ok);
+      } catch(e){
+        done(false);
+      }
+    }
+
+    clearBtn.addEventListener('click', function(){
+      DEBUG_LOG.length = 0;
+      debugAlert = false;
+      refreshDebugBadge();
+      logBox.textContent = formatDebugLog();
+      copiedMsg.textContent = '';
+    });
+
+    modalCard.appendChild(title);
+    modalCard.appendChild(desc);
+    modalCard.appendChild(logBox);
+    modalCard.appendChild(row);
+    modalCard.appendChild(copiedMsg);
   }
 
   function renderHelpModal(){
@@ -2808,6 +3024,14 @@
     codeInput.focus();
   });
 
+  /* ============================================================
+     DEBUG BADGE
+  ============================================================ */
+  document.getElementById('debugBadge').addEventListener('click', function(){
+    openModal('debug');
+  });
+  refreshDebugBadge();
+
   // Focusing the editor is what actually triggers a phone's on-screen
   // keyboard, so it's a more direct signal than trying to measure the
   // screen shrinking — that measurement can be unreliable when this
@@ -2816,9 +3040,19 @@
   // controlled by the host, not by the keyboard itself.
   codeInput.addEventListener('focus', function(){
     fabEl.classList.add('fab-hidden');
+    logDebug('FOCUS', 'vv.height=' + vvHeightNow() + ' innerHeight=' + window.innerHeight);
   });
   codeInput.addEventListener('blur', function(){
     fabEl.classList.remove('fab-hidden');
+    // e.relatedTarget/document.activeElement right after a blur tells us
+    // WHY it happened: if focus landed on a real element (a modal's
+    // input, a button), that's a normal, deliberate blur. If it lands on
+    // nothing in particular (body, or nothing at all) while no modal is
+    // open, that's the signature of the OS itself dropping the keyboard.
+    var toEl = document.activeElement;
+    var toDesc = toEl ? (toEl.tagName + (toEl.id ? '#' + toEl.id : '')) : 'null';
+    var modalOpen = modalScrim.classList.contains('show');
+    logDebug('BLUR', 'vv.height=' + vvHeightNow() + ' innerHeight=' + window.innerHeight + ' focusWentTo=' + toDesc + ' modalOpen=' + modalOpen);
   });
 
   /* ============================================================
@@ -2841,8 +3075,12 @@
   if(window.visualViewport){
     var vv = window.visualViewport;
     var ticking = false;
+    var lastLoggedVvHeight = Math.round(vv.height);
     var update = function(){
       ticking = false;
+      var h = Math.round(vv.height);
+      logDebug('VV RESIZE', 'height=' + h + ' (was ' + lastLoggedVvHeight + ', delta=' + (h - lastLoggedVvHeight) + ') innerHeight=' + window.innerHeight + ' activeIsCodeInput=' + (document.activeElement === codeInput));
+      lastLoggedVvHeight = h;
       updateFabVisibility(vv.height);
     };
     var scheduleUpdate = function(){
