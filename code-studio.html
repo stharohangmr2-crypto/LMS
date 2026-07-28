@@ -58,6 +58,7 @@
   #phone {
     max-width: 480px;
     height: 100vh;
+    height: 100dvh;
     margin: 0 auto;
     background: var(--bg-app);
     display: flex;
@@ -1006,6 +1007,7 @@
   // ever fires once per stale save.
   var SAVE_VERSION = 2;
   var storageBroken = false;
+  var storageVerified = false;
   function persist(){
     // Undo/redo history is intentionally excluded here — it's an
     // in-session convenience, not something that needs to survive a
@@ -1020,15 +1022,22 @@
       version: SAVE_VERSION, files: cleanFiles, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
       settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey }
     };
+    var payloadStr = JSON.stringify(payload);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(STORAGE_KEY, payloadStr);
       // Read-back check: a sandboxed/opaque-origin iframe can accept a
       // setItem call without error yet not actually persist it, so a
-      // successful try/catch alone doesn't prove the save stuck.
-      if(localStorage.getItem(STORAGE_KEY) !== JSON.stringify(payload)){
-        flagStorageBroken();
-      } else if(storageBroken){
-        storageBroken = false;
+      // successful try/catch alone doesn't prove the save stuck. Only
+      // worth checking once per session, not on every single autosave —
+      // whether storage actually sticks here doesn't change keystroke
+      // to keystroke.
+      if(!storageVerified){
+        storageVerified = true;
+        if(localStorage.getItem(STORAGE_KEY) !== payloadStr){
+          flagStorageBroken();
+        } else if(storageBroken){
+          storageBroken = false;
+        }
       }
     } catch(e){
       flagStorageBroken();
@@ -1453,7 +1462,20 @@
   var autosaveTimer = null;
   function schedulePersist(){
     clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(persist, 500);
+    // persist() does a synchronous localStorage write (plus a read-back
+    // check) on the main thread. Firing that the instant this timer
+    // elapses means it lands right as you resume typing — which on
+    // Android is enough to stall the thread long enough for the
+    // keyboard's input connection to give up. Handing it to
+    // requestIdleCallback lets the browser run it whenever it's
+    // actually idle instead of forcing it into that exact moment.
+    autosaveTimer = setTimeout(function(){
+      if(window.requestIdleCallback){
+        requestIdleCallback(persist, { timeout: 1000 });
+      } else {
+        persist();
+      }
+    }, 500);
   }
 
   // Undo/redo tracking. Auto-pairing, auto-indent, and the brace-block
@@ -1503,6 +1525,22 @@
     restoreSnapshot(f, next);
   }
 
+  var renderTicking = false;
+  function scheduleRender(){
+    // Coalesces into at most one render per frame regardless of how many
+    // times 'input' fires in that frame (e.g. a burst of fast keystrokes,
+    // or a single insertion that happens to fire 'input' more than once).
+    if(renderTicking) return;
+    renderTicking = true;
+    requestAnimationFrame(function(){
+      renderTicking = false;
+      var f = files[activeFile];
+      if(!f) return;
+      highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
+      renderLineNumbers();
+    });
+  }
+
   codeInput.addEventListener('input', function(){
     var f = files[activeFile];
     if(!f) return;
@@ -1510,8 +1548,19 @@
     f.content = codeInput.value;
     var wasDirty = f.dirty;
     f.dirty = true;
-    highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
-    renderLineNumbers();
+    // Syntax highlighting and line numbers used to be rebuilt right here,
+    // synchronously, on every single keystroke. That's real, measurable
+    // work (a full-file tokenizer pass, plus per-line wrap measurement),
+    // and running it inline in the input event meant every keystroke had
+    // to wait for it before the browser could move on — including
+    // finishing up whatever the on-screen keyboard's IME was doing.
+    // Typing slowly gave every keystroke its own full-cost render and its
+    // own chance to stall long enough for the keyboard to drop; typing
+    // fast let the browser coalesce several keystrokes into fewer input
+    // events, so the cost was paid less often — which is exactly the
+    // fast-vs-slow split that gave this away. Deferring the render to
+    // the next frame keeps the input event itself essentially free.
+    scheduleRender();
     // renderTabs() tears down and rebuilds every tab element (plus its
     // click listener) from scratch — only worth doing when the dirty
     // dot is actually appearing for the first time on this file, not
@@ -1732,13 +1781,11 @@
     var ok = false;
     try { ok = document.execCommand('cut'); } catch(e){ ok = false; }
     if(ok){
-      codeInput.dispatchEvent(new Event('input'));
       showToast('Cut');
       return;
     }
     // Fallback: remove the text ourselves and try to get it onto the clipboard.
     document.execCommand('delete');
-    codeInput.dispatchEvent(new Event('input'));
     try {
       if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function(){});
     } catch(e){ /* clipboard write failed — the cut itself still happened */ }
@@ -1754,7 +1801,6 @@
       navigator.clipboard.readText().then(function(text){
         if(!text) return;
         document.execCommand('insertText', false, text);
-        codeInput.dispatchEvent(new Event('input'));
       }).catch(function(){
         showToast('Paste blocked here — try holding on the text and using Paste');
       });
@@ -1808,10 +1854,9 @@
     if(key === 'Tab'){
       e.preventDefault();
       document.execCommand('insertText', false, '  ');
-      codeInput.dispatchEvent(new Event('input'));
     } else if(key === 'Enter'){
       e.preventDefault();
-      if(handleEnterKey()) codeInput.dispatchEvent(new Event('input'));
+      handleEnterKey();
     }
   });
 
@@ -1844,7 +1889,6 @@
     if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
     if(handleTypedChar(e.data)){
       e.preventDefault();
-      codeInput.dispatchEvent(new Event('input'));
     }
   });
 
@@ -1863,7 +1907,6 @@
       if(!handleTypedChar(sym)){
         document.execCommand('insertText', false, sym);
       }
-      codeInput.dispatchEvent(new Event('input'));
     });
     symToolbar.appendChild(b);
   });
@@ -2748,71 +2791,36 @@
 
   /* ============================================================
      KEYBOARD-AWARE VIEWPORT
-     Mobile browsers don't shrink 100vh when the on-screen keyboard
-     opens, so anything anchored to the bottom (the symbol toolbar,
-     bottom-sheet modals, the rename box) ends up hidden behind the
-     keyboard. window.visualViewport reports the real visible height,
-     so we resize #phone to match it: the layout shrinks to sit
-     exactly above the keyboard while it's open, and grows back to
-     full height the moment it closes. Where this signal IS reliable
-     (a standalone page in a real mobile browser) it also backs up the
-     focus/blur check above for the fab, since it can catch keyboard
-     changes the focus check wouldn't (e.g. a hardware keyboard's
-     autocomplete bar changing the viewport without ever blurring).
+     #phone's height (100vh / 100dvh, in the CSS above) plus the
+     interactive-widget=resizes-content viewport meta tag already
+     handles shrinking the layout above the keyboard on their own —
+     no JS involved. Deliberately not touching #phone's height here:
+     doing so on top of the browser's own native resize was two
+     mechanisms fighting over the same job, which is what was
+     dropping the keyboard's focus. This block only reads
+     visualViewport, never writes to layout.
   ============================================================ */
-  var phoneEl = document.getElementById('phone');
-  var lastAppliedHeight = null;
-
-  function applyPhoneHeight(h){
-    // Skip no-op / sub-pixel writes. Re-setting style.height to a value
-    // that's already (near enough) applied still forces a layout
-    // recalculation, and doing that repeatedly inside a hot event loop
-    // is what was producing the flash and the keyboard closing itself.
-    if(lastAppliedHeight !== null && Math.abs(h - lastAppliedHeight) < 2) return;
-    lastAppliedHeight = h;
-    phoneEl.style.height = h + 'px';
-  }
-
   function updateFabVisibility(vvHeight){
     var keyboardOpen = (window.innerHeight - vvHeight) > 150;
     if(keyboardOpen) fabEl.classList.add('fab-hidden');
     else if(document.activeElement !== codeInput) fabEl.classList.remove('fab-hidden');
   }
 
-  function initViewportHandling(){
-    if(window.visualViewport){
-      var vv = window.visualViewport;
-      var ticking = false;
-      var update = function(){
-        ticking = false;
-        applyPhoneHeight(vv.height);
-        updateFabVisibility(vv.height);
-      };
-      var scheduleUpdate = function(){
-        if(ticking) return;
-        ticking = true;
-        requestAnimationFrame(update);
-      };
-      // Only 'resize' is needed to catch the keyboard opening/closing.
-      // 'scroll' fires continuously while the keyboard animates in/out
-      // (and again whenever the resulting layout change nudges the
-      // visual viewport's offset), so writing to phoneEl.style.height
-      // from both listeners set up a resize -> layout shift -> scroll
-      // -> resize feedback loop. Inside a nested iframe (this page
-      // embedded in a host app's preview panel) that loop doesn't
-      // settle on its own — the WebView eventually reads the input as
-      // unstable and drops focus, dismissing the keyboard, with a
-      // frame or two of unstyled layout flashing through as the height
-      // whips back and forth.
-      vv.addEventListener('resize', scheduleUpdate);
-      update();
-    } else {
-      applyPhoneHeight(window.innerHeight);
-      window.addEventListener('resize', function(){ applyPhoneHeight(window.innerHeight); });
-    }
+  if(window.visualViewport){
+    var vv = window.visualViewport;
+    var ticking = false;
+    var update = function(){
+      ticking = false;
+      updateFabVisibility(vv.height);
+    };
+    var scheduleUpdate = function(){
+      if(ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    };
+    vv.addEventListener('resize', scheduleUpdate);
+    update();
   }
-
-  initViewportHandling();
 
   window.addEventListener('resize', function(){
     if(wordWrap) renderLineNumbers();
