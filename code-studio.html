@@ -367,32 +367,33 @@
   .debug-badge {
     position: absolute;
     left: 14px;
-    bottom: 54px;
-    min-width: 42px; height: 42px;
-    padding: 0 10px;
-    border-radius: 21px;
-    background: #2f333c;
-    border: 1px solid var(--divider);
-    color: var(--text-dim);
+    bottom: 100px;
+    min-width: 46px; height: 46px;
+    padding: 0 12px;
+    border-radius: 23px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    color: #1b1e24;
     display: flex; align-items: center; justify-content: center;
-    gap: 5px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
     font-family: var(--font-code);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
-    z-index: 32;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.55);
+    z-index: 999;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
   .debug-badge.alert {
-    background: #4a1f22;
-    border-color: #d9534f;
-    color: #ff9d99;
+    background: #ff3b30;
+    border-color: #fff;
+    color: #fff;
   }
   .debug-badge .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--text-faint);
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #1b1e24;
     flex-shrink: 0;
   }
-  .debug-badge.alert .dot { background: #ff5a52; }
+  .debug-badge.alert .dot { background: #fff; }
   .debug-log {
     background: #14161a;
     border: 1px solid var(--divider);
@@ -837,7 +838,7 @@
       No files yet.<br>Open the menu (&#9776;) and tap <br>New file<br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
-    <div class="debug-badge" id="debugBadge"><div class="dot"></div><span id="debugBadgeCount">log</span></div>
+    <div class="debug-badge" id="debugBadge"><div class="dot"></div><span id="debugBadgeCount">DEBUG</span></div>
   </div>
 
   <!-- Bottom symbol toolbar -->
@@ -964,18 +965,40 @@
      so a report can be "here's the log" instead of "it broke again".
      Registered first, before anything else, so it also catches
      errors during startup.
+
+     Written to localStorage on every single entry, not just kept in
+     memory: if the tab hangs and the browser silently reloads it to
+     recover (which is exactly what a full, unexplained state reset
+     looks like — that's a page reload, not a keyboard quirk), an
+     in-memory-only log would vanish along with everything else right
+     when it's most needed. Written to storage as it happens, it's
+     still there to read back the moment the page comes back up.
   ============================================================ */
   var DEBUG_LOG = [];
   var DEBUG_LOG_MAX = 400;
   var debugT0 = (window.performance && performance.now) ? performance.now() : Date.now();
   var debugAlert = false;
+  var DEBUG_STORAGE_KEY = 'codeStudioDebugLog_v1';
+  var RECOVERED_LOG = null;
+
+  try {
+    var __prevDebugRaw = localStorage.getItem(DEBUG_STORAGE_KEY);
+    if(__prevDebugRaw){
+      var __prevDebugParsed = JSON.parse(__prevDebugRaw);
+      if(__prevDebugParsed && __prevDebugParsed.length) RECOVERED_LOG = __prevDebugParsed;
+    }
+  } catch(e){ /* recovery is best-effort — a corrupt/missing entry just means nothing to recover */ }
 
   function debugNow(){
     return (((window.performance && performance.now) ? performance.now() : Date.now()) - debugT0).toFixed(1);
   }
+  function persistDebugLog(){
+    try { localStorage.setItem(DEBUG_STORAGE_KEY, JSON.stringify(DEBUG_LOG)); } catch(e){ /* best-effort */ }
+  }
   function logDebug(tag, detail){
     DEBUG_LOG.push({ t: debugNow(), tag: tag, detail: detail || '' });
     if(DEBUG_LOG.length > DEBUG_LOG_MAX) DEBUG_LOG.shift();
+    persistDebugLog();
     refreshDebugBadge();
   }
   function flagDebugAlert(){
@@ -986,8 +1009,9 @@
     var badge = document.getElementById('debugBadge');
     var count = document.getElementById('debugBadgeCount');
     if(!badge || !count) return;
-    count.textContent = debugAlert ? ('!' + DEBUG_LOG.length) : String(DEBUG_LOG.length);
-    badge.classList.toggle('alert', debugAlert);
+    var recoveredFlag = RECOVERED_LOG ? '\u2605 ' : '';
+    count.textContent = recoveredFlag + (debugAlert ? '! ' : '') + 'DEBUG ' + DEBUG_LOG.length;
+    badge.classList.toggle('alert', debugAlert || !!RECOVERED_LOG);
   }
   function vvHeightNow(){
     return window.visualViewport ? Math.round(window.visualViewport.height) : -1;
@@ -2573,11 +2597,21 @@
     modalCard.appendChild(styleRow);
   }
 
-  function formatDebugLog(){
-    if(!DEBUG_LOG.length) return '(empty — type something first, then open this again)';
-    return DEBUG_LOG.map(function(entry){
+  function formatLogEntries(entries){
+    return entries.map(function(entry){
       return '[' + entry.t + 'ms] ' + entry.tag + (entry.detail ? ('  ' + entry.detail) : '');
     }).join('\n');
+  }
+  function formatDebugLog(){
+    var parts = [];
+    if(RECOVERED_LOG && RECOVERED_LOG.length){
+      parts.push('=== RECOVERED FROM RIGHT BEFORE THE LAST RELOAD ===\n' + formatLogEntries(RECOVERED_LOG));
+    }
+    if(DEBUG_LOG.length){
+      parts.push((parts.length ? '=== CURRENT SESSION (since this reload) ===\n' : '') + formatLogEntries(DEBUG_LOG));
+    }
+    if(!parts.length) return '(empty — type something first, then open this again)';
+    return parts.join('\n\n');
   }
 
   function renderDebugModal(){
@@ -2588,7 +2622,9 @@
     var desc = document.createElement('div');
     desc.className = 'setting-desc';
     desc.style.marginBottom = '10px';
-    desc.textContent = 'Type slowly until the keyboard closes, then come straight back here and copy this — it\u2019s a timestamped trace of everything that happened right up to that moment.';
+    desc.textContent = RECOVERED_LOG
+      ? 'This starts with a log recovered from right before the app last reloaded — that\u2019s the moment we need. Copy the whole thing.'
+      : 'Type slowly until the keyboard closes, then come straight back here and copy this — it\u2019s a timestamped trace of everything that happened right up to that moment. If the app reloads, reopening this will show what was recovered from just before that happened.';
 
     var logBox = document.createElement('div');
     logBox.className = 'debug-log';
@@ -2642,7 +2678,9 @@
 
     clearBtn.addEventListener('click', function(){
       DEBUG_LOG.length = 0;
+      RECOVERED_LOG = null;
       debugAlert = false;
+      try { localStorage.removeItem(DEBUG_STORAGE_KEY); } catch(e){ /* best-effort */ }
       refreshDebugBadge();
       logBox.textContent = formatDebugLog();
       copiedMsg.textContent = '';
