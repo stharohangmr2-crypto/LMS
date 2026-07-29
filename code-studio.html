@@ -1033,6 +1033,41 @@
   });
 
   /* ============================================================
+     CRASH-LOOP BREAKER
+     If the tab hangs and the browser silently reloads it to recover,
+     and whatever was open re-renders and hangs again immediately on
+     load, the result is a fast reload loop — the app never gets a
+     chance to actually respond to a tap. This counts startups within
+     a short window; on the 3rd one in a row it's treated as a loop,
+     and loadState() below skips auto-opening the last file (nothing
+     is deleted — it just isn't rendered until deliberately chosen)
+     instead of walking straight back into whatever caused it. The
+     counter resets itself a few seconds after a startup that doesn't
+     immediately loop, so normal everyday use never trips this.
+  ============================================================ */
+  var BOOT_KEY = 'codeStudioBootTracker_v1';
+  var CRASH_LOOP_DETECTED = false;
+  try {
+    var __bootRaw = localStorage.getItem(BOOT_KEY);
+    var __boot = __bootRaw ? JSON.parse(__bootRaw) : null;
+    var __bootNow = Date.now();
+    if(__boot && (__bootNow - __boot.firstAt) < 15000){
+      __boot.count = (__boot.count || 1) + 1;
+    } else {
+      __boot = { count: 1, firstAt: __bootNow };
+    }
+    localStorage.setItem(BOOT_KEY, JSON.stringify(__boot));
+    if(__boot.count >= 3){
+      CRASH_LOOP_DETECTED = true;
+      logDebug('CRASH LOOP', 'detected ' + __boot.count + ' startups within 15s — skipping auto-open of last file');
+      flagDebugAlert();
+    }
+  } catch(e){ /* best-effort — if this fails, we just don't get loop protection this time */ }
+  setTimeout(function(){
+    try { localStorage.setItem(BOOT_KEY, JSON.stringify({ count: 0, firstAt: Date.now() })); } catch(e){ /* best-effort */ }
+  }, 4000);
+
+  /* ============================================================
      STATE
   ============================================================ */
   var files = {};          // filename -> { content, type, dirty, saved }
@@ -1218,6 +1253,12 @@
             document.documentElement.style.setProperty('--code-size', fontSize + 'px');
             applyFontStyle(data.settings.fontStyleKey || 'mono');
             typingHelpers = !!data.settings.typingHelpers;
+          }
+          if(CRASH_LOOP_DETECTED){
+            activeFile = null;
+            cb();
+            showToast('Stopped auto-opening your last file after repeated reloads — pick one from Files when ready');
+            return;
           }
           cb();
           return;
