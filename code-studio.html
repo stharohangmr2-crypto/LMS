@@ -4,45 +4,67 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
 <title>Code Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg-app: #262b33;
-    --bg-topbar: #1b1e24;
-    --bg-tabs: #20242b;
-    --bg-drawer: #1a1d23;
-    --bg-panel: #1e2129;
-    --bg-editor: #262b33;
-    --border-subtle: #33394333;
-    --divider: #3a4049;
-    --text-main: #e7e9ee;
-    --text-dim: #8a90a0;
-    --text-faint: #565c68;
-    --accent: #ffc233;
-    --accent-soft: #ffc23322;
-    --html-color: #e44d26;
-    --css-color: #2f9bda;
-    --js-color: #f0db4f;
-    --py-color: #3776ab;
-    --tok-tag: #6fb3e0;
-    --tok-attr: #d3a15c;
-    --tok-string: #9fd88a;
-    --tok-comment: #5c6370;
-    --tok-keyword: #c586c0;
-    --tok-number: #d19a66;
-    --tok-selector: #e5c07b;
-    --tok-prop: #6fb3e0;
-    --tok-value: #9fd88a;
-    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    /* One base material color — almost everything below shares it.
+       Depth comes entirely from paired light/dark shadows relative to
+       this same color, not from different panel fills, which is what
+       makes the chrome read as one molded surface instead of stacked
+       flat panels with drop-shadows glued on. */
+    --base: #262b33;
+    --bg-tabs: #262b33;
+    --bg-drawer: #262b33;
+    --bg-panel: #262b33;
+    --bg-editor: #1c2027;
+    --bg-editor-well: #191c22;
+    --shadow-dark: rgba(5, 6, 8, 0.68);
+    --shadow-light: rgba(255, 255, 255, 0.07);
+    --divider: rgba(255, 255, 255, 0.06);
+    --text-main: #e9ebf0;
+    --text-dim: #9298a8;
+    --text-faint: #5c6270;
+    --accent: #f4b93f;
+    --accent-ink: #241b04;
+    --accent-soft: #f4b93f1f;
+    --danger: #e8685c;
+    --html-color: #e2643a;
+    --css-color: #4fa8dc;
+    --js-color: #e8c547;
+    --py-color: #5a9bd4;
+    --tok-tag: #7cbcec;
+    --tok-attr: #d9ac6e;
+    --tok-string: #a3d68d;
+    --tok-comment: #6b7280;
+    --tok-keyword: #d199d8;
+    --tok-number: #dba36f;
+    --tok-selector: #e8c880;
+    --tok-prop: #7cbcec;
+    --tok-value: #a3d68d;
+    --font-ui: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-code: 'JetBrains Mono', "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --code-size: 15px;
     --editor-font-family: var(--font-code);
     --editor-font-style: normal;
     --editor-font-variant: normal;
     --editor-bottom-pad: 40vh;
-    --radius-sm: 10px;
-    --radius-md: 14px;
-    --radius-lg: 22px;
+    --radius-sm: 12px;
+    --radius-md: 18px;
+    --radius-lg: 28px;
     --radius-pill: 999px;
+
+    /* Shadow recipes. Raised = available / not yet acted on. Pressed
+       (inset) = selected, active, or being edited right now. That
+       pairing is used consistently everywhere below so the shadow
+       language actually carries meaning instead of just decorating. */
+    --raised-lg: 9px 9px 18px var(--shadow-dark), -9px -9px 18px var(--shadow-light);
+    --raised: 5px 5px 11px var(--shadow-dark), -5px -5px 11px var(--shadow-light);
+    --raised-sm: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+    --pressed-lg: inset 8px 8px 16px var(--shadow-dark), inset -8px -8px 16px var(--shadow-light);
+    --pressed: inset 4px 4px 9px var(--shadow-dark), inset -4px -4px 9px var(--shadow-light);
+    --pressed-sm: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
   }
 
   * { box-sizing: border-box; }
@@ -50,7 +72,7 @@
   html, body {
     margin: 0; padding: 0; height: 100%;
     overflow: hidden;
-    background: #0e1014;
+    background: #101216;
     font-family: var(--font-ui);
     -webkit-tap-highlight-color: transparent;
   }
@@ -60,32 +82,34 @@
     height: 100vh;
     height: 100dvh;
     margin: 0 auto;
-    background: var(--bg-app);
+    background: var(--base);
     display: flex;
     flex-direction: column;
     position: relative;
     overflow: hidden;
-    border-radius: 18px;
-    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    border-radius: 32px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
   }
 
   /* ---------- Top bar ---------- */
   .topbar {
-    background: var(--bg-topbar);
+    background: var(--base);
     display: flex;
     align-items: center;
-    padding: 10px 12px;
+    padding: 12px 14px;
     gap: 10px;
     flex-shrink: 0;
-    border-bottom: 1px solid var(--divider);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03), 0 6px 14px -8px rgba(0,0,0,0.5);
+    position: relative;
+    z-index: 2;
   }
   .icon-btn {
-    background: none;
+    background: var(--base);
     border: none;
     color: var(--text-main);
-    font-size: 19px;
-    width: 34px;
-    height: 34px;
+    font-size: 17px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -93,9 +117,10 @@
     cursor: pointer;
     flex-shrink: 0;
     padding: 0;
-    transition: background 0.12s ease;
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease;
   }
-  .icon-btn:active { background: rgba(255,255,255,0.08); }
+  .icon-btn:active { box-shadow: var(--pressed-sm); }
   .title-block {
     flex: 1;
     min-width: 0;
@@ -105,60 +130,63 @@
   }
   .file-title {
     color: var(--text-main);
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15.5px;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.1px;
   }
   .file-subtitle {
     color: var(--text-dim);
-    font-size: 12px;
-    margin-top: 1px;
+    font-size: 11.5px;
+    margin-top: 2px;
+    font-weight: 500;
   }
-  .top-actions { display: flex; align-items: center; gap: 2px; }
+  .top-actions { display: flex; align-items: center; gap: 8px; }
 
   /* ---------- Tabs ---------- */
   .tabs {
     display: flex;
-    background: var(--bg-tabs);
+    background: var(--base);
     overflow-x: auto;
     flex-shrink: 0;
-    border-bottom: 1px solid var(--divider);
     scrollbar-width: none;
+    padding: 8px 8px 10px;
+    gap: 6px;
   }
   .tabs::-webkit-scrollbar { display: none; }
   .tab {
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 10px 12px;
+    padding: 8px 13px;
     white-space: nowrap;
     color: var(--text-dim);
-    font-size: 13.5px;
-    border-bottom: 2px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
     flex-shrink: 0;
     position: relative;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    margin: 6px 2px 0;
-    transition: background 0.12s ease;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.12s ease, color 0.12s ease;
   }
   .tab.active {
     color: var(--text-main);
-    border-bottom: 2px solid var(--accent);
-    background: rgba(255,255,255,0.05);
+    box-shadow: var(--pressed-sm);
   }
   .tab .dot {
-    width: 7px; height: 7px; border-radius: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent);
     flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--accent-soft);
   }
   .tab .ficon {
     width: 15px; height: 15px;
     flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 800;
+    font-size: 9.5px; font-weight: 800;
     border-radius: 5px;
     color: #fff;
   }
@@ -168,9 +196,9 @@
   .tab .ficon.py { background: var(--py-color); }
   .tab .close {
     color: var(--text-faint);
-    font-size: 14px;
+    font-size: 13px;
     padding: 2px;
-    margin-left: 2px;
+    margin-left: 1px;
   }
   .tab .close:hover { color: var(--text-main); }
 
@@ -181,6 +209,9 @@
     overflow: hidden;
     position: relative;
     background: var(--bg-editor);
+    margin: 0 10px 10px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--pressed-lg);
   }
   .empty-state {
     position: absolute;
@@ -198,12 +229,12 @@
   .empty-state.show { display: flex; }
   .empty-state b { color: var(--text-main); }
   .line-numbers {
-    padding: 8px 8px var(--editor-bottom-pad) 12px;
+    padding: 14px 8px var(--editor-bottom-pad) 14px;
     text-align: right;
     color: var(--text-faint);
     font-family: var(--editor-font-family);
     font-size: var(--code-size);
-    line-height: 1.55;
+    line-height: 1.6;
     user-select: none;
     overflow: hidden;
     flex-shrink: 0;
@@ -218,12 +249,12 @@
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     margin: 0;
-    padding: 8px 12px var(--editor-bottom-pad) 6px;
+    padding: 14px 14px var(--editor-bottom-pad) 6px;
     font-family: var(--editor-font-family);
     font-style: var(--editor-font-style);
     font-variant: var(--editor-font-variant);
     font-size: var(--code-size);
-    line-height: 1.55;
+    line-height: 1.6;
     white-space: pre;
     overflow: auto;
     tab-size: 2;
@@ -259,7 +290,7 @@
   .code-input {
     background: transparent;
     color: transparent;
-    caret-color: #fff;
+    caret-color: var(--accent);
     resize: none;
     outline: none;
     z-index: 1;
@@ -282,79 +313,89 @@
   .symbol-toolbar {
     display: flex;
     align-items: center;
-    background: var(--bg-topbar);
-    border-top: 1px solid var(--divider);
+    background: var(--base);
     flex-shrink: 0;
+    padding-top: 2px;
+    box-shadow: 0 -1px 0 rgba(255,255,255,0.03), 0 -6px 14px -10px rgba(0,0,0,0.5);
+    position: relative;
+    z-index: 2;
   }
   .toolbar-actions {
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    padding: 6px 2px 6px 6px;
-    gap: 2px;
+    padding: 7px 4px 7px 8px;
+    gap: 6px;
   }
   .tb-action-btn {
     width: 34px; height: 34px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
+    font-size: 16px;
     color: var(--text-main);
+    background: var(--base);
     border-radius: 50%;
     flex-shrink: 0;
-    transition: background 0.12s ease, opacity 0.12s ease;
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease, opacity 0.12s ease;
   }
-  .tb-action-btn:active { background: rgba(255,255,255,0.14); }
-  .tb-action-btn.disabled { opacity: 0.3; pointer-events: none; }
+  .tb-action-btn:active { box-shadow: var(--pressed-sm); }
+  .tb-action-btn.disabled { opacity: 0.32; pointer-events: none; box-shadow: none; }
   .ctrl-btn {
     height: 34px;
-    padding: 0 14px;
+    padding: 0 15px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
     color: var(--text-main);
-    background: rgba(255,255,255,0.05);
+    background: var(--base);
     border-radius: var(--radius-pill);
     flex-shrink: 0;
-    transition: background 0.12s ease, color 0.12s ease;
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease, color 0.1s ease;
   }
-  .ctrl-btn:active { background: rgba(255,255,255,0.14); }
-  .ctrl-btn.armed { background: var(--accent); color: #fff; }
-  .toolbar-divider { width: 1px; height: 22px; background: var(--divider); margin: 0 5px; flex-shrink: 0; }
+  .ctrl-btn:active { box-shadow: var(--pressed-sm); }
+  .ctrl-btn.armed { background: var(--accent); color: var(--accent-ink); box-shadow: var(--pressed-sm); }
+  .toolbar-divider { width: 1px; height: 20px; background: var(--divider); margin: 0 6px; flex-shrink: 0; }
   .symbol-toolbar-scroll {
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
     flex: 1;
     min-width: 0;
+    gap: 6px;
+    padding-right: 8px;
   }
   .symbol-toolbar-scroll::-webkit-scrollbar { display: none; }
   .sym-btn {
     color: var(--text-main);
     font-family: var(--font-code);
-    font-size: 15px;
-    padding: 8px 16px;
-    margin: 6px 3px;
-    background: rgba(255,255,255,0.05);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 7px 15px;
+    margin: 7px 0;
+    background: var(--base);
     border: none;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
-    transition: background 0.12s ease;
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease;
   }
-  .sym-btn:active { background: rgba(255,255,255,0.14); }
+  .sym-btn:active { box-shadow: var(--pressed-sm); }
 
-  /* ---------- Scroll-to-top fab (decorative, matches screenshot) ---------- */
+  /* ---------- Scroll-to-top fab ---------- */
   .fab {
     position: absolute;
-    right: 14px;
-    bottom: 54px;
+    right: 22px;
+    bottom: 62px;
     width: 42px; height: 42px;
     border-radius: 50%;
-    background: #2f333c;
-    border: 1px solid var(--divider);
+    background: var(--base);
+    border: none;
     color: var(--text-main);
     display: flex; align-items: center; justify-content: center;
     font-size: 16px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    box-shadow: var(--raised);
     opacity: 1;
     transition: opacity 0.15s ease;
   }
@@ -366,39 +407,38 @@
   /* ---------- Debug badge & log ---------- */
   .debug-badge {
     position: absolute;
-    left: 14px;
-    bottom: 100px;
-    min-width: 46px; height: 46px;
-    padding: 0 12px;
-    border-radius: 23px;
+    left: 18px;
+    bottom: 108px;
+    min-width: 46px; height: 44px;
+    padding: 0 13px;
+    border-radius: 22px;
     background: var(--accent);
-    border: 2px solid #fff;
-    color: #1b1e24;
+    border: none;
+    color: var(--accent-ink);
     display: flex; align-items: center; justify-content: center;
     gap: 6px;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 12.5px;
+    font-weight: 800;
     font-family: var(--font-code);
-    box-shadow: 0 3px 14px rgba(0,0,0,0.55);
+    box-shadow: var(--raised);
     z-index: 999;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
   }
   .debug-badge.alert {
-    background: #ff3b30;
-    border-color: #fff;
+    background: var(--danger);
     color: #fff;
   }
   .debug-badge .dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #1b1e24;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-ink);
     flex-shrink: 0;
   }
   .debug-badge.alert .dot { background: #fff; }
   .debug-log {
-    background: #14161a;
-    border: 1px solid var(--divider);
-    border-radius: 10px;
-    padding: 10px;
+    background: var(--bg-editor-well);
+    border-radius: var(--radius-md);
+    box-shadow: var(--pressed);
+    padding: 12px;
     font-family: var(--font-code);
     font-size: 11.5px;
     line-height: 1.5;
@@ -408,27 +448,29 @@
     overflow-y: auto;
     color: var(--text-dim);
   }
-  .debug-log .line-err { color: #ff8a80; }
-  .debug-log .line-blur { color: #ffc233; }
-  .debug-log .line-focus { color: #7fd88a; }
-  .debug-row { display: flex; gap: 8px; margin-top: 12px; }
+  .debug-log .line-err { color: var(--danger); }
+  .debug-log .line-blur { color: var(--accent); }
+  .debug-log .line-focus { color: var(--tok-string); }
+  .debug-row { display: flex; gap: 10px; margin-top: 14px; }
   .debug-row button {
     flex: 1;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid var(--divider);
-    background: #2a2e36;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--base);
     color: var(--text-main);
     font-size: 13.5px;
-    font-weight: 600;
+    font-weight: 700;
+    box-shadow: var(--raised-sm);
   }
-  .debug-row button.primary { background: var(--accent); color: #1b1e24; border-color: var(--accent); }
-  .debug-copied { color: var(--accent); font-size: 12px; text-align: center; margin-top: 8px; height: 14px; }
+  .debug-row button:active { box-shadow: var(--pressed-sm); }
+  .debug-row button.primary { background: var(--accent); color: var(--accent-ink); }
+  .debug-copied { color: var(--accent); font-size: 12px; text-align: center; margin-top: 10px; height: 14px; font-weight: 600; }
 
   /* ---------- Overlays / Drawer ---------- */
   .scrim {
     position: absolute; inset: 0;
-    background: rgba(0,0,0,0.35);
+    background: rgba(0,0,0,0.4);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
@@ -448,141 +490,155 @@
     z-index: 21;
     overflow-y: auto;
     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-    box-shadow: -2px 0 18px rgba(0,0,0,0.4);
+    box-shadow: -14px 0 34px rgba(0,0,0,0.45), inset 1px 0 0 rgba(255,255,255,0.03);
+    padding: 6px;
   }
   .drawer.show { transform: translateX(0); }
   .drawer-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 15px 18px;
+    padding: 15px 16px;
+    margin: 3px 4px;
     color: var(--text-main);
-    font-size: 15px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 14.5px;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.12s ease;
+    transition: box-shadow 0.1s ease;
   }
-  .drawer-item:active { background: rgba(255,255,255,0.06); border-radius: var(--radius-sm); }
+  .drawer-item:active { box-shadow: var(--pressed-sm); }
   .drawer-item .di-icon { color: var(--text-dim); font-size: 15px; width: 20px; text-align: center; }
-  .drawer-gap { height: 8px; background: rgba(0,0,0,0.15); }
+  .drawer-gap { height: 14px; }
 
   /* ---------- More popup menu ---------- */
   .popup-menu {
     position: absolute;
-    top: 54px; right: 8px;
+    top: 58px; right: 12px;
     background: var(--bg-panel);
-    border: 1px solid var(--divider);
     border-radius: var(--radius-md);
     min-width: 190px;
     z-index: 25;
     overflow: hidden;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    box-shadow: var(--raised-lg);
     display: none;
+    padding: 5px;
   }
   .popup-menu.show { display: block; }
   .popup-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 16px;
+    padding: 12px 13px;
     color: var(--text-main);
     font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-radius: var(--radius-sm);
   }
-  .popup-item:last-child { border-bottom: none; }
-  .popup-item:active { background: rgba(255,255,255,0.08); }
+  .popup-item:active { box-shadow: var(--pressed-sm); }
   .popup-item .pi-icon { width: 18px; text-align: center; font-size: 15px; color: var(--text-dim); flex-shrink: 0; }
   .popup-item .pi-label { flex: 1; }
   .popup-item .pi-check {
-    width: 16px; height: 16px;
-    border: 1.5px solid var(--text-faint);
-    border-radius: 5px;
+    width: 17px; height: 17px;
+    border-radius: 6px;
+    background: var(--bg-panel);
+    box-shadow: var(--pressed-sm);
     flex-shrink: 0;
   }
-  .popup-item .pi-check.checked { background: var(--accent); border-color: var(--accent); }
-  .popup-gap { height: 6px; background: rgba(0,0,0,0.15); }
-  .popup-menu.preview-menu { top: 46px; }
+  .popup-item .pi-check.checked { background: var(--accent); box-shadow: none; }
+  .popup-gap { height: 8px; }
+  .popup-menu.preview-menu { top: 50px; }
 
   /* ---------- Modal ---------- */
   .modal-scrim {
     position: absolute; inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.55);
     display: none;
     align-items: flex-end;
     z-index: 30;
   }
   .modal-scrim.show { display: flex; }
   .modal-scrim.modal-scrim-top { align-items: flex-start; padding-top: 8vh; }
-  .modal-scrim.modal-scrim-top .modal-card { border-radius: var(--radius-lg); }
+  .modal-scrim.modal-scrim-top .modal-card { border-radius: var(--radius-lg); margin: 0 12px; width: auto; }
   .modal-card {
     background: var(--bg-panel);
     width: 100%;
     max-height: 84%;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: 18px 18px 20px;
+    padding: 20px 20px 22px;
     overflow-y: auto;
     animation: slideUp 0.18s ease;
+    box-shadow: 0 -2px 0 rgba(255,255,255,0.03), 0 -20px 50px -20px rgba(0,0,0,0.6);
   }
   @keyframes slideUp { from { transform: translateY(24px); opacity:0; } to { transform: translateY(0); opacity:1; } }
   .modal-title {
     color: var(--text-main);
     font-size: 17px;
-    font-weight: 700;
-    margin: 0 0 14px;
+    font-weight: 800;
+    margin: 0 0 16px;
   }
   .modal-input {
     width: 100%;
-    background: var(--bg-app);
-    border: 1px solid var(--divider);
+    background: var(--bg-panel);
+    border: none;
     color: var(--text-main);
     border-radius: var(--radius-md);
-    padding: 11px 14px;
+    padding: 13px 15px;
     font-size: 15px;
     font-family: var(--font-code);
     margin-bottom: 12px;
     outline: none;
-    transition: border-color 0.12s ease;
+    box-shadow: var(--pressed);
+    transition: box-shadow 0.12s ease;
   }
-  .modal-input:focus { border-color: var(--accent); }
+  .modal-input:focus { box-shadow: var(--pressed), 0 0 0 2px var(--accent); }
   .modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    margin-top: 14px;
+    margin-top: 16px;
   }
   .btn {
-    padding: 10px 20px;
+    padding: 11px 22px;
     border-radius: var(--radius-pill);
     border: none;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
+    background: var(--base);
+    color: var(--text-dim);
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease;
   }
-  .btn-ghost { background: none; color: var(--text-dim); }
-  .btn-primary { background: var(--accent); color: #1a1a1a; }
+  .btn:active { box-shadow: var(--pressed-sm); }
+  .btn-ghost { background: var(--bg-panel); color: var(--text-dim); box-shadow: none; }
+  .btn-ghost:active { box-shadow: var(--pressed-sm); }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
   .file-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 11px 4px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding: 12px 10px;
+    margin-bottom: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-main);
     font-size: 14.5px;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.12s ease;
+    transition: box-shadow 0.1s ease;
   }
-  .file-row:active { background: rgba(255,255,255,0.05); border-radius: var(--radius-sm); }
+  .file-row:active { box-shadow: var(--pressed-sm); }
   .file-row .frow-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file-row .frow-del { color: var(--text-faint); font-size: 15px; padding: 4px; }
   .empty-hint { color: var(--text-faint); font-size: 13.5px; padding: 14px 4px; }
   .help-block { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
   .help-code {
     display: block;
-    background: var(--bg-app);
-    border: 1px solid var(--divider);
+    background: var(--bg-editor-well);
     border-radius: var(--radius-md);
-    padding: 10px 14px;
+    box-shadow: var(--pressed-sm);
+    padding: 11px 15px;
     color: var(--accent);
     font-family: var(--font-code);
     font-size: 13px;
@@ -592,63 +648,69 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 2px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding: 13px 4px;
   }
-  .setting-label { color: var(--text-main); font-size: 14.5px; }
+  .setting-label { color: var(--text-main); font-size: 14.5px; font-weight: 600; }
   .switch {
-    width: 42px; height: 24px;
-    background: var(--divider);
+    width: 44px; height: 26px;
+    background: var(--bg-panel);
+    box-shadow: var(--pressed-sm);
     border-radius: var(--radius-pill);
     position: relative;
     cursor: pointer;
     flex-shrink: 0;
+    transition: background 0.15s ease;
   }
   .switch.on { background: var(--accent); }
   .switch .knob {
-    position: absolute; top: 2px; left: 2px;
+    position: absolute; top: 3px; left: 3px;
     width: 20px; height: 20px;
-    background: #fff; border-radius: 50%;
+    background: var(--base); border-radius: 50%;
+    box-shadow: var(--raised-sm);
     transition: transform 0.15s ease;
   }
-  .switch.on .knob { transform: translateX(18px); }
+  .switch.on .knob { transform: translateX(18px); background: var(--accent-ink); }
   .setting-row.column { flex-direction: column; align-items: stretch; gap: 10px; }
   .setting-row-top { display: flex; align-items: center; justify-content: space-between; }
-  .setting-value { color: var(--accent); font-weight: 700; font-size: 13px; font-family: var(--font-code); }
-  .setting-desc { color: var(--text-dim); font-size: 12px; line-height: 1.4; }
+  .setting-value { color: var(--accent); font-weight: 800; font-size: 13px; font-family: var(--font-code); }
+  .setting-desc { color: var(--text-dim); font-size: 12px; line-height: 1.5; }
   .font-slider {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 4px;
+    height: 6px;
     border-radius: var(--radius-pill);
-    background: var(--divider);
+    background: var(--bg-panel);
+    box-shadow: var(--pressed-sm);
     outline: none;
-    margin: 4px 0;
+    margin: 8px 0;
   }
   .font-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 20px; height: 20px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     background: var(--accent);
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    box-shadow: var(--raised-sm);
   }
   .font-slider::-moz-range-thumb {
-    width: 20px; height: 20px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     background: var(--accent);
     border: none;
     cursor: pointer;
+    box-shadow: var(--raised-sm);
   }
   .seg-group { display: flex; gap: 8px; flex-wrap: wrap; }
   .seg-btn {
-    padding: 7px 14px; border-radius: var(--radius-pill);
-    background: var(--bg-app); border: 1px solid var(--divider);
-    color: var(--text-dim); font-size: 13px; cursor: pointer;
+    padding: 8px 15px; border-radius: var(--radius-pill);
+    background: var(--base); border: none;
+    color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: var(--raised-sm);
+    transition: box-shadow 0.1s ease, color 0.1s ease;
   }
-  .seg-btn.active { border-color: var(--accent); color: var(--accent); }
+  .seg-btn.active { color: var(--accent); box-shadow: var(--pressed-sm); }
 
   /* ---------- Preview overlay ---------- */
   .preview-overlay {
@@ -660,13 +722,14 @@
   }
   .preview-overlay.show { display: flex; }
   .preview-topbar {
-    background: var(--bg-topbar);
+    background: var(--base);
     color: var(--text-main);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 11px 16px;
     font-size: 14px;
+    font-weight: 600;
     flex-shrink: 0;
   }
   .preview-topbar .pt-actions { display: flex; gap: 16px; align-items: center; }
@@ -676,27 +739,26 @@
     top: -4px; right: -7px;
     width: 8px; height: 8px;
     border-radius: 50%;
-    background: #ff6b6b;
+    background: var(--danger);
     display: none;
   }
   .preview-console-dot.show { display: block; }
   .preview-body { flex: 1; position: relative; overflow: hidden; display: flex; }
   #previewFrame { flex: 1; border: none; width: 100%; background: #fff; }
   .preview-body.device-mode { justify-content: center; background: #14171d; }
-  .preview-body.device-mode #previewFrame { flex: none; width: 375px; max-width: 92%; box-shadow: 0 0 0 1px var(--divider); }
+  .preview-body.device-mode #previewFrame { flex: none; width: 375px; max-width: 92%; box-shadow: var(--raised-lg); border-radius: var(--radius-md); }
 
   /* ---------- Console panel (lives inside the preview overlay) ---------- */
   .preview-console-panel {
     position: absolute;
-    left: 0; right: 0; bottom: 0;
+    left: 8px; right: 8px; bottom: 8px;
     height: 46%;
     background: var(--bg-panel);
-    border-top: 1px solid var(--divider);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-radius: var(--radius-lg);
     display: none;
     flex-direction: column;
     z-index: 5;
-    box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
+    box-shadow: var(--raised-lg);
   }
   .preview-console-panel.show { display: flex; }
 
@@ -708,7 +770,7 @@
     padding: 12px 14px;
     font-family: var(--font-code);
     font-size: 13px;
-    background: #0e1014;
+    background: var(--bg-editor-well);
   }
   .py-console-body.show { display: block; }
   .py-console-body .log-line.stdin { color: var(--accent); }
@@ -734,26 +796,26 @@
   /* ---------- Terminal panel (main editor) ---------- */
   .side-panel {
     position: absolute;
-    left: 0; right: 0; bottom: 0;
+    left: 8px; right: 8px; bottom: 8px;
     height: 46%;
     background: var(--bg-panel);
-    border-top: 1px solid var(--divider);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-radius: var(--radius-lg);
     display: none;
     flex-direction: column;
     z-index: 22;
+    box-shadow: var(--raised-lg);
   }
   .side-panel.show { display: flex; }
   .panel-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--divider);
+    padding: 12px 16px;
     color: var(--text-main);
     font-size: 13.5px;
-    font-weight: 600;
+    font-weight: 700;
     flex-shrink: 0;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03);
   }
-  .panel-head span.clear-btn { color: var(--text-dim); font-weight: 400; cursor: pointer; }
+  .panel-head span.clear-btn { color: var(--text-dim); font-weight: 500; cursor: pointer; }
   .panel-head-actions { display: flex; align-items: center; gap: 16px; }
   .panel-close {
     color: var(--text-dim);
@@ -767,20 +829,20 @@
   .panel-body {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 12px;
+    padding: 8px 14px;
     font-family: var(--font-code);
     font-size: 12.5px;
   }
-  .log-line { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
-  .log-line.error { color: #ff6b6b; }
-  .log-line.warn { color: #ffd166; }
+  .log-line { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
+  .log-line.error { color: var(--danger); }
+  .log-line.warn { color: #ecc16b; }
   .term-input-row {
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 12px;
-    border-top: 1px solid var(--divider);
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 -1px 0 rgba(255,255,255,0.03);
     flex-shrink: 0;
   }
-  .term-prompt { color: var(--accent); font-family: var(--font-code); font-size: 13px; }
+  .term-prompt { color: var(--accent); font-family: var(--font-code); font-size: 13px; font-weight: 700; }
   .term-input {
     flex: 1; background: none; border: none; outline: none;
     color: var(--text-main); font-family: var(--font-code); font-size: 13px;
@@ -789,13 +851,15 @@
   /* ---------- Toast ---------- */
   .toast {
     position: absolute;
-    bottom: 70px; left: 50%;
+    bottom: 78px; left: 50%;
     transform: translateX(-50%) translateY(10px);
-    background: #34383f;
+    background: var(--base);
     color: var(--text-main);
-    padding: 11px 22px;
+    padding: 12px 24px;
     border-radius: var(--radius-pill);
     font-size: 13.5px;
+    font-weight: 600;
+    box-shadow: var(--raised-lg);
     opacity: 0;
     pointer-events: none;
     transition: all 0.2s ease;
@@ -958,6 +1022,68 @@
 (function(){
 
   /* ============================================================
+     CIRCUIT BREAKER — runs before literally anything else
+     If the tab hangs and the browser silently reloads it to recover,
+     and whatever runs on the next load hangs again immediately, the
+     result is a fast reload loop with the app never staying up long
+     enough to respond to a tap. This counts startups within a short
+     window; on the 3rd one in a row it assumes a loop and stops here
+     — nothing below this block runs: no state loading, no rendering,
+     no event listeners, nothing. Instead it shows a minimal, fully
+     static screen with two manual choices. This is deliberately
+     broader than "skip opening the last file" (which turned out not
+     to be enough) — it doesn't try to guess which part is unsafe, it
+     just guarantees nothing automatic runs at all until a person taps
+     something. The counter resets a few seconds after a startup that
+     doesn't immediately loop, so normal everyday use never trips it.
+  ============================================================ */
+  var BOOT_KEY = 'codeStudioBootTracker_v1';
+  var loopDetected = false;
+  try {
+    var bootRaw = localStorage.getItem(BOOT_KEY);
+    var boot = bootRaw ? JSON.parse(bootRaw) : null;
+    var bootNow = Date.now();
+    if(boot && (bootNow - boot.firstAt) < 15000){
+      boot.count = (boot.count || 1) + 1;
+    } else {
+      boot = { count: 1, firstAt: bootNow };
+    }
+    localStorage.setItem(BOOT_KEY, JSON.stringify(boot));
+    if(boot.count >= 3) loopDetected = true;
+  } catch(e){ /* if this fails, we just don't get loop protection this time */ }
+
+  if(loopDetected){
+    document.documentElement.innerHTML =
+      '<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>' +
+      'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;' +
+      'background:#1b1e24;color:#e7e9ee;font-family:sans-serif;padding:24px;box-sizing:border-box;}' +
+      '.card{max-width:360px;text-align:center;}' +
+      'h1{font-size:17px;margin:0 0 10px;}' +
+      'p{font-size:14px;color:#8a90a0;line-height:1.5;margin:0 0 20px;}' +
+      'button{display:block;width:100%;padding:13px;margin-bottom:10px;border-radius:9px;' +
+      'border:1px solid #3a4049;font-size:14.5px;font-weight:600;background:#2a2e36;color:#e7e9ee;}' +
+      'button.primary{background:#ffc233;color:#1b1e24;border-color:#ffc233;}' +
+      '</style></head><body><div class="card">' +
+      '<h1>Stopped before starting</h1>' +
+      '<p>This reloaded several times in a row right on startup, so it stopped itself before running anything else — nothing was deleted. Pick how to continue:</p>' +
+      '<button class="primary" id="cbContinue">Continue normally</button>' +
+      '<button id="cbWipe">Erase saved data and start fresh</button>' +
+      '</div></body>';
+    document.getElementById('cbContinue').addEventListener('click', function(){
+      try { localStorage.setItem(BOOT_KEY, JSON.stringify({ count: 0, firstAt: Date.now() })); } catch(e){}
+      location.reload();
+    });
+    document.getElementById('cbWipe').addEventListener('click', function(){
+      try { localStorage.clear(); } catch(e){}
+      location.reload();
+    });
+    return; // nothing else in this file executes
+  }
+  setTimeout(function(){
+    try { localStorage.setItem(BOOT_KEY, JSON.stringify({ count: 0, firstAt: Date.now() })); } catch(e){ /* best-effort */ }
+  }, 4000);
+
+  /* ============================================================
      DEBUG LOG
      A rolling, timestamped trace of exactly what happens around
      every keystroke — input events (with how long each one took to
@@ -1031,41 +1157,6 @@
     logDebug('PROMISE REJECTION', msg + stack);
     flagDebugAlert();
   });
-
-  /* ============================================================
-     CRASH-LOOP BREAKER
-     If the tab hangs and the browser silently reloads it to recover,
-     and whatever was open re-renders and hangs again immediately on
-     load, the result is a fast reload loop — the app never gets a
-     chance to actually respond to a tap. This counts startups within
-     a short window; on the 3rd one in a row it's treated as a loop,
-     and loadState() below skips auto-opening the last file (nothing
-     is deleted — it just isn't rendered until deliberately chosen)
-     instead of walking straight back into whatever caused it. The
-     counter resets itself a few seconds after a startup that doesn't
-     immediately loop, so normal everyday use never trips this.
-  ============================================================ */
-  var BOOT_KEY = 'codeStudioBootTracker_v1';
-  var CRASH_LOOP_DETECTED = false;
-  try {
-    var __bootRaw = localStorage.getItem(BOOT_KEY);
-    var __boot = __bootRaw ? JSON.parse(__bootRaw) : null;
-    var __bootNow = Date.now();
-    if(__boot && (__bootNow - __boot.firstAt) < 15000){
-      __boot.count = (__boot.count || 1) + 1;
-    } else {
-      __boot = { count: 1, firstAt: __bootNow };
-    }
-    localStorage.setItem(BOOT_KEY, JSON.stringify(__boot));
-    if(__boot.count >= 3){
-      CRASH_LOOP_DETECTED = true;
-      logDebug('CRASH LOOP', 'detected ' + __boot.count + ' startups within 15s — skipping auto-open of last file');
-      flagDebugAlert();
-    }
-  } catch(e){ /* best-effort — if this fails, we just don't get loop protection this time */ }
-  setTimeout(function(){
-    try { localStorage.setItem(BOOT_KEY, JSON.stringify({ count: 0, firstAt: Date.now() })); } catch(e){ /* best-effort */ }
-  }, 4000);
 
   /* ============================================================
      STATE
@@ -1253,12 +1344,6 @@
             document.documentElement.style.setProperty('--code-size', fontSize + 'px');
             applyFontStyle(data.settings.fontStyleKey || 'mono');
             typingHelpers = !!data.settings.typingHelpers;
-          }
-          if(CRASH_LOOP_DETECTED){
-            activeFile = null;
-            cb();
-            showToast('Stopped auto-opening your last file after repeated reloads — pick one from Files when ready');
-            return;
           }
           cb();
           return;
