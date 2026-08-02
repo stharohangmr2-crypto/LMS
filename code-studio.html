@@ -404,69 +404,6 @@
     pointer-events: none;
   }
 
-  /* ---------- Debug badge & log ---------- */
-  .debug-badge {
-    position: absolute;
-    left: 18px;
-    bottom: 108px;
-    min-width: 46px; height: 44px;
-    padding: 0 13px;
-    border-radius: 22px;
-    background: var(--accent);
-    border: none;
-    color: var(--accent-ink);
-    display: flex; align-items: center; justify-content: center;
-    gap: 6px;
-    font-size: 12.5px;
-    font-weight: 800;
-    font-family: var(--font-code);
-    box-shadow: var(--raised);
-    z-index: 999;
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-  .debug-badge.alert {
-    background: var(--danger);
-    color: #fff;
-  }
-  .debug-badge .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--accent-ink);
-    flex-shrink: 0;
-  }
-  .debug-badge.alert .dot { background: #fff; }
-  .debug-log {
-    background: var(--bg-editor-well);
-    border-radius: var(--radius-md);
-    box-shadow: var(--pressed);
-    padding: 12px;
-    font-family: var(--font-code);
-    font-size: 11.5px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 50vh;
-    overflow-y: auto;
-    color: var(--text-dim);
-  }
-  .debug-log .line-err { color: var(--danger); }
-  .debug-log .line-blur { color: var(--accent); }
-  .debug-log .line-focus { color: var(--tok-string); }
-  .debug-row { display: flex; gap: 10px; margin-top: 14px; }
-  .debug-row button {
-    flex: 1;
-    padding: 12px;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: var(--base);
-    color: var(--text-main);
-    font-size: 13.5px;
-    font-weight: 700;
-    box-shadow: var(--raised-sm);
-  }
-  .debug-row button:active { box-shadow: var(--pressed-sm); }
-  .debug-row button.primary { background: var(--accent); color: var(--accent-ink); }
-  .debug-copied { color: var(--accent); font-size: 12px; text-align: center; margin-top: 10px; height: 14px; font-weight: 600; }
-
   /* ---------- Overlays / Drawer ---------- */
   .scrim {
     position: absolute; inset: 0;
@@ -902,7 +839,6 @@
       No files yet.<br>Open the menu (&#9776;) and tap <br>New file<br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
-    <div class="debug-badge" id="debugBadge"><div class="dot"></div><span id="debugBadgeCount">DEBUG</span></div>
   </div>
 
   <!-- Bottom symbol toolbar -->
@@ -1084,81 +1020,6 @@
   }, 4000);
 
   /* ============================================================
-     DEBUG LOG
-     A rolling, timestamped trace of exactly what happens around
-     every keystroke — input events (with how long each one took to
-     handle), focus/blur, viewport size changes, and any JS error —
-     so a report can be "here's the log" instead of "it broke again".
-     Registered first, before anything else, so it also catches
-     errors during startup.
-
-     Written to localStorage on every single entry, not just kept in
-     memory: if the tab hangs and the browser silently reloads it to
-     recover (which is exactly what a full, unexplained state reset
-     looks like — that's a page reload, not a keyboard quirk), an
-     in-memory-only log would vanish along with everything else right
-     when it's most needed. Written to storage as it happens, it's
-     still there to read back the moment the page comes back up.
-  ============================================================ */
-  var DEBUG_LOG = [];
-  var DEBUG_LOG_MAX = 400;
-  var debugT0 = (window.performance && performance.now) ? performance.now() : Date.now();
-  var debugAlert = false;
-  var DEBUG_STORAGE_KEY = 'codeStudioDebugLog_v1';
-  var RECOVERED_LOG = null;
-
-  try {
-    var __prevDebugRaw = localStorage.getItem(DEBUG_STORAGE_KEY);
-    if(__prevDebugRaw){
-      var __prevDebugParsed = JSON.parse(__prevDebugRaw);
-      if(__prevDebugParsed && __prevDebugParsed.length) RECOVERED_LOG = __prevDebugParsed;
-    }
-  } catch(e){ /* recovery is best-effort — a corrupt/missing entry just means nothing to recover */ }
-
-  function debugNow(){
-    return (((window.performance && performance.now) ? performance.now() : Date.now()) - debugT0).toFixed(1);
-  }
-  function persistDebugLog(){
-    try { localStorage.setItem(DEBUG_STORAGE_KEY, JSON.stringify(DEBUG_LOG)); } catch(e){ /* best-effort */ }
-  }
-  function logDebug(tag, detail){
-    DEBUG_LOG.push({ t: debugNow(), tag: tag, detail: detail || '' });
-    if(DEBUG_LOG.length > DEBUG_LOG_MAX) DEBUG_LOG.shift();
-    persistDebugLog();
-    refreshDebugBadge();
-  }
-  function flagDebugAlert(){
-    debugAlert = true;
-    refreshDebugBadge();
-  }
-  function refreshDebugBadge(){
-    var badge = document.getElementById('debugBadge');
-    var count = document.getElementById('debugBadgeCount');
-    if(!badge || !count) return;
-    var recoveredFlag = RECOVERED_LOG ? '\u2605 ' : '';
-    count.textContent = recoveredFlag + (debugAlert ? '! ' : '') + 'DEBUG ' + DEBUG_LOG.length;
-    badge.classList.toggle('alert', debugAlert || !!RECOVERED_LOG);
-  }
-  function vvHeightNow(){
-    return window.visualViewport ? Math.round(window.visualViewport.height) : -1;
-  }
-
-  window.addEventListener('error', function(e){
-    var msg = (e && e.message) || 'unknown error';
-    var where = (e && e.filename) ? (' @' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno) : '';
-    var stack = (e && e.error && e.error.stack) ? ('\n' + e.error.stack) : '';
-    logDebug('JS ERROR', msg + where + stack);
-    flagDebugAlert();
-  });
-  window.addEventListener('unhandledrejection', function(e){
-    var reason = e && e.reason;
-    var msg = (reason && reason.message) ? reason.message : String(reason);
-    var stack = (reason && reason.stack) ? ('\n' + reason.stack) : '';
-    logDebug('PROMISE REJECTION', msg + stack);
-    flagDebugAlert();
-  });
-
-  /* ============================================================
      STATE
   ============================================================ */
   var files = {};          // filename -> { content, type, dirty, saved }
@@ -1282,7 +1143,6 @@
   var storageBroken = false;
   var storageVerified = false;
   function persist(){
-    var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     // Undo/redo history is intentionally excluded here — it's an
     // in-session convenience, not something that needs to survive a
     // reload, and each file can carry up to 100 full-content snapshots
@@ -1316,8 +1176,6 @@
     } catch(e){
       flagStorageBroken();
     }
-    var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
-    logDebug('PERSIST', 'tookMs=' + __ms + ' payloadBytes=' + payloadStr.length);
   }
 
   var storageWarningShown = false;
@@ -1809,21 +1667,16 @@
     // or a single insertion that happens to fire 'input' more than once).
     if(renderTicking) return;
     renderTicking = true;
-    var __scheduledAt = debugNow();
     requestAnimationFrame(function(){
-      var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
       renderTicking = false;
       var f = files[activeFile];
       if(!f) return;
       highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
       renderLineNumbers();
-      var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
-      logDebug('RENDER', 'tookMs=' + __ms + ' scheduledAtT=' + __scheduledAt + ' contentLen=' + f.content.length);
     });
   }
 
   codeInput.addEventListener('input', function(e){
-    var __t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     var f = files[activeFile];
     if(!f) return;
     pushUndoSnapshot(f);
@@ -1852,8 +1705,6 @@
       renderTabs();
     }
     schedulePersist();
-    var __ms = (((window.performance && performance.now) ? performance.now() : Date.now()) - __t0).toFixed(1);
-    logDebug('INPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' handlerMs=' + __ms + ' len=' + f.content.length);
   });
 
 
@@ -2167,22 +2018,18 @@
         // what was letting the plain letter slip through instead of
         // running the shortcut.
         e.preventDefault();
-        logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' ctrlShortcut=' + letter + ' prevented=true');
         setTimeout(function(){ performCtrlShortcut(letter); }, 0);
         return;
       }
     }
     if(!typingHelpers){
-      logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' typingHelpers=false prevented=false');
       return;
     }
     if(e.inputType !== 'insertText' || !e.data || e.data.length !== 1){
-      logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' (ignored, not single-char insertText)');
       return;
     }
     var __prevented = handleTypedChar(e.data);
     if(__prevented) e.preventDefault();
-    logDebug('BEFOREINPUT', 'data=' + JSON.stringify(e.data) + ' type=' + e.inputType + ' prevented=' + __prevented);
   });
 
 
@@ -2494,7 +2341,6 @@
     else if(kind === 'find') renderFindModal();
     else if(kind === 'settings') renderSettingsModal();
     else if(kind === 'help') renderHelpModal();
-    else if(kind === 'debug') renderDebugModal();
     // Modals with a text field the user types into anchor near the top of
     // the screen instead of the bottom, so the on-screen keyboard can't
     // cover the field — independent of whatever the viewport-resize logic
@@ -2721,102 +2567,6 @@
     modalCard.appendChild(helpersRow);
     modalCard.appendChild(fontRow);
     modalCard.appendChild(styleRow);
-  }
-
-  function formatLogEntries(entries){
-    return entries.map(function(entry){
-      return '[' + entry.t + 'ms] ' + entry.tag + (entry.detail ? ('  ' + entry.detail) : '');
-    }).join('\n');
-  }
-  function formatDebugLog(){
-    var parts = [];
-    if(RECOVERED_LOG && RECOVERED_LOG.length){
-      parts.push('=== RECOVERED FROM RIGHT BEFORE THE LAST RELOAD ===\n' + formatLogEntries(RECOVERED_LOG));
-    }
-    if(DEBUG_LOG.length){
-      parts.push((parts.length ? '=== CURRENT SESSION (since this reload) ===\n' : '') + formatLogEntries(DEBUG_LOG));
-    }
-    if(!parts.length) return '(empty — type something first, then open this again)';
-    return parts.join('\n\n');
-  }
-
-  function renderDebugModal(){
-    var title = document.createElement('div');
-    title.className = 'modal-title';
-    title.textContent = 'Debug log';
-
-    var desc = document.createElement('div');
-    desc.className = 'setting-desc';
-    desc.style.marginBottom = '10px';
-    desc.textContent = RECOVERED_LOG
-      ? 'This starts with a log recovered from right before the app last reloaded — that\u2019s the moment we need. Copy the whole thing.'
-      : 'Type slowly until the keyboard closes, then come straight back here and copy this — it\u2019s a timestamped trace of everything that happened right up to that moment. If the app reloads, reopening this will show what was recovered from just before that happened.';
-
-    var logBox = document.createElement('div');
-    logBox.className = 'debug-log';
-    logBox.id = 'debugLogBox';
-    logBox.textContent = formatDebugLog();
-
-    var row = document.createElement('div');
-    row.className = 'debug-row';
-    var copyBtn = document.createElement('button');
-    copyBtn.className = 'primary';
-    copyBtn.textContent = 'Copy log';
-    var clearBtn = document.createElement('button');
-    clearBtn.textContent = 'Clear';
-    row.appendChild(copyBtn);
-    row.appendChild(clearBtn);
-
-    var copiedMsg = document.createElement('div');
-    copiedMsg.className = 'debug-copied';
-    copiedMsg.id = 'debugCopiedMsg';
-
-    copyBtn.addEventListener('click', function(){
-      var text = formatDebugLog();
-      var done = function(ok){
-        copiedMsg.textContent = ok ? 'Copied — paste it in the chat' : 'Couldn\u2019t copy automatically — select the text above and copy manually';
-      };
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(text).then(function(){ done(true); }).catch(function(){
-          fallbackCopy(text, done);
-        });
-      } else {
-        fallbackCopy(text, done);
-      }
-    });
-
-    function fallbackCopy(text, done){
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        done(ok);
-      } catch(e){
-        done(false);
-      }
-    }
-
-    clearBtn.addEventListener('click', function(){
-      DEBUG_LOG.length = 0;
-      RECOVERED_LOG = null;
-      debugAlert = false;
-      try { localStorage.removeItem(DEBUG_STORAGE_KEY); } catch(e){ /* best-effort */ }
-      refreshDebugBadge();
-      logBox.textContent = formatDebugLog();
-      copiedMsg.textContent = '';
-    });
-
-    modalCard.appendChild(title);
-    modalCard.appendChild(desc);
-    modalCard.appendChild(logBox);
-    modalCard.appendChild(row);
-    modalCard.appendChild(copiedMsg);
   }
 
   function renderHelpModal(){
@@ -3188,14 +2938,6 @@
     codeInput.focus();
   });
 
-  /* ============================================================
-     DEBUG BADGE
-  ============================================================ */
-  document.getElementById('debugBadge').addEventListener('click', function(){
-    openModal('debug');
-  });
-  refreshDebugBadge();
-
   // Focusing the editor is what actually triggers a phone's on-screen
   // keyboard, so it's a more direct signal than trying to measure the
   // screen shrinking — that measurement can be unreliable when this
@@ -3204,19 +2946,9 @@
   // controlled by the host, not by the keyboard itself.
   codeInput.addEventListener('focus', function(){
     fabEl.classList.add('fab-hidden');
-    logDebug('FOCUS', 'vv.height=' + vvHeightNow() + ' innerHeight=' + window.innerHeight);
   });
   codeInput.addEventListener('blur', function(){
     fabEl.classList.remove('fab-hidden');
-    // e.relatedTarget/document.activeElement right after a blur tells us
-    // WHY it happened: if focus landed on a real element (a modal's
-    // input, a button), that's a normal, deliberate blur. If it lands on
-    // nothing in particular (body, or nothing at all) while no modal is
-    // open, that's the signature of the OS itself dropping the keyboard.
-    var toEl = document.activeElement;
-    var toDesc = toEl ? (toEl.tagName + (toEl.id ? '#' + toEl.id : '')) : 'null';
-    var modalOpen = modalScrim.classList.contains('show');
-    logDebug('BLUR', 'vv.height=' + vvHeightNow() + ' innerHeight=' + window.innerHeight + ' focusWentTo=' + toDesc + ' modalOpen=' + modalOpen);
   });
 
   /* ============================================================
@@ -3239,12 +2971,8 @@
   if(window.visualViewport){
     var vv = window.visualViewport;
     var ticking = false;
-    var lastLoggedVvHeight = Math.round(vv.height);
     var update = function(){
       ticking = false;
-      var h = Math.round(vv.height);
-      logDebug('VV RESIZE', 'height=' + h + ' (was ' + lastLoggedVvHeight + ', delta=' + (h - lastLoggedVvHeight) + ') innerHeight=' + window.innerHeight + ' activeIsCodeInput=' + (document.activeElement === codeInput));
-      lastLoggedVvHeight = h;
       updateFabVisibility(vv.height);
     };
     var scheduleUpdate = function(){
