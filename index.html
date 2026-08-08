@@ -471,7 +471,9 @@ const STORAGE_KEYS = {
   seen: 'nimbus_seen_map',
   students: 'nimbus_students',
   submissions: 'nimbus_submissions',
-  messages: 'nimbus_messages'
+  messages: 'nimbus_messages',
+  geminiSettings: 'nimbus_gemini_settings',
+  awnSettings: 'nimbus_awn_settings'
 };
 const ADMIN_ID = 'rohan';
 const ADMIN_PW = 'MJRR7800MI';
@@ -629,6 +631,46 @@ function removeStudent(studentId) {
   });
   if (activeStudentDetailId === studentId) activeStudentDetailId = null;
   if (activeReviewKey && activeReviewKey.studentId === studentId) activeReviewKey = null;
+}
+
+// ---- AI Manager settings — the Gemini API key/model live only on this
+// device's localStorage. They're intentionally never passed through
+// mutateCloudList/nimbusCloud — it's a local credential, not classroom data,
+// so it should never leave the device or sync to anyone else's browser.
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+function getGeminiSettings() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.geminiSettings)); } catch (e) { parsed = null; }
+  return Object.assign({ apiKey: '', model: DEFAULT_GEMINI_MODEL }, parsed || {});
+}
+function saveGeminiSettings(patch) {
+  const next = Object.assign({}, getGeminiSettings(), patch);
+  localStorage.setItem(STORAGE_KEYS.geminiSettings, JSON.stringify(next));
+  return next;
+}
+// Awn AI is the AI Manager's active provider — same local-only storage
+// rule as Gemini above: this key never leaves the device.
+function getAwnSettings() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.awnSettings)); } catch (e) { parsed = null; }
+  return Object.assign({ apiKey: '' }, parsed || {});
+}
+function saveAwnSettings(patch) {
+  const next = Object.assign({}, getAwnSettings(), patch);
+  localStorage.setItem(STORAGE_KEYS.awnSettings, JSON.stringify(next));
+  return next;
+}
+// Resolves a student by exact ID first (findStudent), then falls back to an
+// exact/partial name match — lets the AI target "Priya" without knowing IDs.
+function findStudentByNameOrId(query) {
+  const q = (query == null ? '' : String(query)).trim().toLowerCase();
+  if (!q) return null;
+  const byId = findStudent(query);
+  if (byId) return byId;
+  const students = getStudents();
+  return students.find(s => (s.name || '').trim().toLowerCase() === q)
+    || students.find(s => (s.name || '').trim().toLowerCase().includes(q))
+    || null;
 }
 
 function getSession() { const raw = localStorage.getItem(STORAGE_KEYS.session); try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
@@ -858,21 +900,6 @@ function render() {
   const app = document.getElementById('app');
   const session = getSession();
   if (!session && currentRoute !== 'login') currentRoute = 'login';
-
-  // The Code Studio embed is a full-screen iframe running its own
-  // standalone app (code-studio.html). Replacing #app's innerHTML while
-  // it's already showing tears out that iframe and recreates it from
-  // scratch, forcing the embedded app to reboot — losing anything it
-  // hadn't autosaved and, if this fires repeatedly in a burst (e.g. the
-  // storage listener below reacting to the iframe's own writes to
-  // localStorage), reboot after reboot. None of the data a render()
-  // would refresh is even visible while this iframe covers the screen,
-  // so once it's up there's nothing here worth re-rendering for — the
-  // iframe only needs the parent again when it exits, which is handled
-  // separately by the postMessage listener.
-  const studioActive = (currentRoute === 'admin' && adminNav === 'studio') || (currentRoute === 'learner' && learnerNav === 'studio');
-  if (studioActive && document.getElementById('code-studio-frame')) return;
-
   if (currentRoute === 'login') app.innerHTML = renderLogin();
   else if (currentRoute === 'admin') app.innerHTML = renderAdmin();
   else if (currentRoute === 'learner') app.innerHTML = renderLearner();
@@ -1093,7 +1120,8 @@ function renderSidebar(role, activeNav, userName, session) {
       { id: 'create', label: 'Create Homework', icon: 'pencil' },
       { id: 'tasks', label: 'Published Tasks', icon: 'listChecks', badge: pendingReview, badgeDot: pendingReview > 0 },
       { id: 'students', label: 'Students', icon: 'users', badge: unreadMsgs, badgeDot: unreadMsgs > 0 },
-      { id: 'studio', label: 'Code Studio', icon: 'code' }
+      { id: 'studio', label: 'Code Studio', icon: 'code' },
+      { id: 'ai', label: 'AI Manager', icon: 'sparkle' }
     ];
   } else {
     const studentId = session?.id;
@@ -1204,6 +1232,7 @@ function renderAdmin() {
             : adminNav === 'tasks' ? renderAdminTasks(session)
             : adminNav === 'students' ? renderAdminStudents(session)
             : adminNav === 'studio' ? renderCodeStudioEmbed(session)
+            : adminNav === 'ai' ? renderAdminAI(session)
             : renderAdminDashboard(session)}
         </div>
       </main>
@@ -2020,6 +2049,407 @@ function closeReview() {
   if (panel) panel.classList.remove('open');
   activeReviewKey = null;
   setTimeout(() => { const el = document.getElementById('review-root'); if (el) el.remove(); }, 460);
+}
+
+// ============================================================
+// AI MANAGER (admin only) — a Gemini-powered chat assistant that can
+// draft + publish homework and message the class on the teacher's behalf.
+// Every write it wants to make (publishing homework, sending a message) is
+// confirmed with the teacher via showConfirm() first — the model can only
+// *propose* an action through its tools; this device always approves it
+// before anything actually happens.
+// ============================================================
+let aiTranscript = [];    // plain transcript for Awn's prompt-in/reply-out API: [{role:'teacher'|'assistant'|'tool', text}]
+let aiDisplayLog = [];    // human-readable log for the bubble UI: [{role, text, ts}]
+let aiChatBusy = false;
+
+function renderAdminAI(session) {
+  const settings = getAwnSettings();
+  const connected = !!settings.apiKey;
+
+  return `
+  ${adminPageHeader('AI Manager', 'Chat with an assistant that can draft homework and message your class for you.')}
+
+  <div class="max-w-3xl mx-auto anim-fade-up relative">
+    <div class="bg-papercard rounded-[1.75rem] border border-ink/8 shadow-sm flex flex-col overflow-hidden" style="height:min(680px, 78vh);">
+      <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-ink/10 shrink-0">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-xl bg-ink text-paper flex items-center justify-center shrink-0">${ic('sparkle', 'w-4 h-4')}</div>
+          <div class="min-w-0">
+            <h2 class="font-display font-semibold text-ink text-sm truncate">AI Assistant</h2>
+            <p class="font-mono2 text-[9px] text-graphite/60 uppercase tracking-wide truncate">Awn AI</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button type="button" id="ai-settings-open" title="Awn AI settings" class="relative w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">
+            ${ic('settingsGear', 'w-4 h-4')}
+            ${connected ? '' : '<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-redline"></span>'}
+          </button>
+          <button type="button" id="ai-clear-chat-btn" title="Clear chat" class="w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('trash2', 'w-4 h-4')}</button>
+        </div>
+      </div>
+
+      <div id="ai-chat-scroll" class="chat-scroll flex-1 overflow-y-auto px-6 py-5 space-y-3">
+        ${aiChatScrollInnerHtml(connected)}
+      </div>
+
+      <form id="ai-chat-form" class="shrink-0 px-6 py-4 border-t border-ink/10 flex items-center gap-3">
+        <input id="ai-chat-input" type="text" autocomplete="off" ${connected ? '' : 'disabled'}
+          placeholder="${connected ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your Awn AI API key to start chatting'}"
+          class="flex-1 px-4 py-3 rounded-full bg-paper/60 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors disabled:opacity-50" />
+        <button type="submit" id="ai-chat-send-btn" ${connected ? '' : 'disabled'} class="btn-press w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 shadow-md shadow-black/15 disabled:opacity-40">${ic('sendHorizontal', 'w-4 h-4')}</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="ai-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div id="ai-settings-backdrop" class="absolute inset-0 bg-ink/50 backdrop-blur-sm"></div>
+    <div class="relative bg-papercard rounded-[1.5rem] border border-ink/10 shadow-2xl w-full max-w-sm p-6 anim-fade-up">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-xl bg-ink/5 flex items-center justify-center shrink-0">${ic('settingsGear', 'w-4 h-4 text-ink/70')}</div>
+          <h2 class="font-display font-semibold text-lg text-ink truncate">Awn AI Settings</h2>
+        </div>
+        <button type="button" id="ai-settings-close" class="w-8 h-8 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('x', 'w-4 h-4')}</button>
+      </div>
+
+      <p id="ai-settings-status" class="font-mono2 text-[10px] tracking-widest uppercase ${connected ? 'text-moss' : 'text-graphite'} mb-4">
+        ${connected ? '● Connected on this device' : '○ Not connected'}
+      </p>
+
+      <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Awn AI API Key</label>
+      <div class="flex items-center gap-2 px-4 py-3 rounded-xl bg-paper/50 border border-ink/10 focus-within:border-redline transition-colors mb-1.5">
+        ${ic('lock', 'w-4 h-4 text-graphite/50 shrink-0')}
+        <input id="ai-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="awn_..." value="${escapeHtml(settings.apiKey)}"
+          class="flex-1 min-w-0 bg-transparent outline-none text-sm text-ink placeholder:text-graphite/40" />
+        <button type="button" id="ai-key-toggle" class="text-graphite/50 hover:text-ink transition-colors shrink-0">${ic('eye', 'w-4 h-4')}</button>
+      </div>
+      <p class="text-[11px] text-graphite mb-5 leading-snug">Stored only on this device.</p>
+
+      <div class="flex items-center gap-2.5">
+        <button type="button" id="ai-settings-save" class="btn-press flex-1 py-3 rounded-full font-semibold text-sm text-paper bg-ink hover:bg-[#2a221a] transition-colors duration-300 flex items-center justify-center gap-2 shadow-md shadow-black/10">
+          ${ic('check', 'w-4 h-4')} Save &amp; Close
+        </button>
+        <button type="button" id="ai-settings-cancel" class="btn-press px-5 py-3 rounded-full font-semibold text-sm text-ink bg-ink/5 hover:bg-ink/10 transition-colors">Close</button>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+function aiChatScrollInnerHtml(connected) {
+  if (aiDisplayLog.length === 0) {
+    return `
+    <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-10">
+      <div class="w-11 h-11 rounded-full bg-ink/5 flex items-center justify-center mb-1">${ic('sparkle', 'w-5 h-5 text-ink/50')}</div>
+      <p class="text-sm font-medium text-ink">${connected ? 'Ask it to draft homework or message your class.' : 'Add an Awn AI API key to get started.'}</p>
+      ${connected ? `<p class="text-xs text-graphite max-w-xs">Try: "Give the class a normal homework based on HTML" or "Tell all students to finish today's homework."</p>` : ''}
+    </div>`;
+  }
+  return aiDisplayLog.map(m => aiBubbleHtml(m.role, m.text, m.ts)).join('');
+}
+
+function aiBubbleHtml(role, text, ts) {
+  if (role === 'system') {
+    return `
+    <div class="flex justify-center">
+      <p class="font-mono2 text-[10px] text-graphite/70 bg-ink/5 rounded-full px-3.5 py-1.5 max-w-[92%] text-center leading-relaxed">${escapeHtml(text)}</p>
+    </div>`;
+  }
+  const mine = role === 'user';
+  return `
+    <div class="flex ${mine ? 'justify-end' : 'justify-start'}">
+      <div class="max-w-[85%] flex items-end gap-2">
+        ${!mine ? `<div class="w-7 h-7 rounded-full bg-ink text-paper flex items-center justify-center shrink-0">${ic('sparkle', 'w-3.5 h-3.5')}</div>` : ''}
+        <div class="min-w-0">
+          <div class="${mine ? 'chat-bubble-out bg-ink text-paper' : 'chat-bubble-in bg-paper/70 text-ink border border-ink/10'} rounded-2xl px-4 py-2.5 text-sm leading-relaxed" style="white-space:pre-wrap;">${escapeHtml(text)}</div>
+          <p class="font-mono2 text-[9px] text-graphite/50 mt-1 ${mine ? 'text-right' : 'text-left'}">${formatDateTime(ts)}</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+function aiTypingBubbleHtml() {
+  return `
+  <div id="ai-typing-bubble" class="flex justify-start">
+    <div class="max-w-[85%] flex items-end gap-2">
+      <div class="w-7 h-7 rounded-full bg-ink text-paper flex items-center justify-center shrink-0">${ic('sparkle', 'w-3.5 h-3.5')}</div>
+      <div class="chat-bubble-in bg-paper/70 border border-ink/10 rounded-2xl px-4 py-3.5 flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-ink/40 animate-bounce"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-ink/40 animate-bounce" style="animation-delay:0.15s"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-ink/40 animate-bounce" style="animation-delay:0.3s"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Appends one bubble to an already-mounted chat + scrolls it into view,
+// mirroring appendChatBubble() above — so a live conversation never has to
+// fully re-render (and lose scroll position on) the whole AI Manager page.
+function appendAiBubble(role, text, ts) {
+  aiDisplayLog.push({ role, text, ts });
+  const scroller = document.getElementById('ai-chat-scroll');
+  if (!scroller) return;
+  const emptyState = scroller.querySelector('.h-full.flex.flex-col.items-center');
+  if (emptyState) scroller.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = aiBubbleHtml(role, text, ts).trim();
+  scroller.appendChild(wrapper.firstElementChild);
+  scroller.scrollTop = scroller.scrollHeight;
+}
+function showAiTyping() {
+  const scroller = document.getElementById('ai-chat-scroll');
+  if (!scroller) return;
+  const emptyState = scroller.querySelector('.h-full.flex.flex-col.items-center');
+  if (emptyState) scroller.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = aiTypingBubbleHtml().trim();
+  scroller.appendChild(wrapper.firstElementChild);
+  scroller.scrollTop = scroller.scrollHeight;
+}
+function hideAiTyping() {
+  const el = document.getElementById('ai-typing-bubble');
+  if (el) el.remove();
+}
+function setAiChatBusy(busy) {
+  aiChatBusy = busy;
+  const hasKey = !!getAwnSettings().apiKey;
+  const input = document.getElementById('ai-chat-input');
+  const btn = document.getElementById('ai-chat-send-btn');
+  if (input) input.disabled = busy || !hasKey;
+  if (btn) btn.disabled = busy || !hasKey;
+}
+
+// ---- Awn AI wiring ----
+// Awn AI's endpoint only takes a single { prompt } string and returns a
+// single { reply } string — no built-in concept of conversation history or
+// function/tool calling. So instead of native tool calls (like Gemini has),
+// we ask the model to always answer in one of two strict JSON shapes, and
+// we build the full transcript into one prompt string on every turn:
+//   {"tool_call": {"name": "...", "args": {...}}}   <- to take an action
+//   {"reply": "..."}                                 <- to just chat
+const AWN_API_URL = 'https://c38c9083-bc8b-4906-8c3f-d0321d373f9d.lovableproject.com/api/public/v1/chat';
+
+const AWN_SYSTEM_PROMPT = `You are the AI Manager inside Nimbus, a local-first classroom LMS. You're chatting with the teacher/admin who runs the class — never a student. You can draft and publish homework and message students using the tools described below.
+
+Available tools:
+1. publish_homework — args: {title (string), type ("written"|"code"|"mcq"), description (string, full instructions), objectives (optional array of 2-4 short strings), dueInDays (optional integer, days from now), codeLang (optional, "html"|"css"|"js", only for type "code"), starter (optional starter code string, only for type "code"), mcqQuestions (only for type "mcq" — array of 3-6 items, each {q: string, options: exactly 4 strings, correctIndex: 0-3})}.
+2. send_message — args: {text (string, exact message), audience ("all"|"one"), student (name or ID, required only when audience is "one")}.
+3. list_students — args: {} — returns the current class roster.
+4. list_homework — args: {} — returns currently published homework.
+
+Rules:
+- When asked to create, assign, or give homework, call publish_homework. Write complete, ready-to-use content yourself: a real title and full instructions on the topic given. Never leave placeholders.
+- If the teacher doesn't say whether the homework should be written, coded, or MCQ, choose one of the three yourself at random instead of asking or defaulting to written every time. If they do say the type, use exactly that type.
+- For type "code", also pick a codeLang (html, css, or js) that fits the topic (default html), and write a short, working starter snippet.
+- For type "mcq", write 3-6 solid questions, each with exactly 4 options and one correctIndex.
+- When asked to message, tell, remind, or notify students, call send_message with audience "all" for the whole class or "one" plus the student's name/ID for a single student. Call list_students first if you're not sure a named student exists.
+- Every publish_homework and send_message call is shown to the teacher for a one-tap approval before it actually happens, so call the tool as soon as you have enough information rather than asking them to confirm in words first.
+- If a tool result has status "declined_by_teacher", briefly acknowledge that and ask what they'd like changed — don't just repeat the same call.
+- Keep your own chat replies short and warm — a sentence or two confirming what happened, not a recap of everything you wrote.
+- You can only do what these tools support (no grading, no deleting homework or students). Say so plainly if asked for something else.
+
+Response format — this is critical and must be followed exactly on every turn:
+Respond with ONLY raw JSON. No markdown code fences, no text before or after the JSON, no commentary.
+- To call a tool: {"tool_call": {"name": "<one of the 4 tool names above>", "args": { ... }}}
+- To just reply in chat without calling a tool: {"reply": "<your short message to the teacher>"}
+Always use exactly one of these two shapes and nothing else.`;
+
+// Turns the running transcript into the single prompt string Awn AI expects.
+function buildAwnPrompt(transcript) {
+  const lines = transcript.map(m => {
+    if (m.role === 'teacher') return 'Teacher: ' + m.text;
+    if (m.role === 'tool') return 'Tool result: ' + m.text;
+    return 'Assistant: ' + m.text;
+  });
+  return AWN_SYSTEM_PROMPT + '\n\n---\nConversation so far:\n' + lines.join('\n') +
+    '\n\nRespond now as Assistant, in raw JSON only, following the response format rules above exactly.';
+}
+
+// Awn replies as plain text — the model is instructed to make that text a
+// JSON blob, but we defensively strip code fences and fall back to treating
+// the raw text as a normal chat reply if it isn't valid/expected JSON.
+function parseAwnReply(raw) {
+  let text = String(raw || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  try {
+    const obj = JSON.parse(text);
+    if (obj && obj.tool_call && obj.tool_call.name) {
+      return { toolCall: { name: String(obj.tool_call.name), args: obj.tool_call.args || {} } };
+    }
+    if (obj && typeof obj.reply === 'string') {
+      return { text: obj.reply };
+    }
+  } catch (e) { /* not JSON — fall through to plain-text reply */ }
+  return { text };
+}
+
+async function callAwnAPI(settings, promptText) {
+  let resp;
+  try {
+    resp = await fetch(AWN_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey },
+      body: JSON.stringify({ prompt: promptText })
+    });
+  } catch (e) {
+    return { error: "Couldn't reach Awn AI — check your connection." };
+  }
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* non-JSON error body, fall through */ }
+  if (!resp.ok) {
+    const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('Request failed (' + resp.status + ')');
+    return { error: String(msg) };
+  }
+  if (!data || typeof data.reply !== 'string') return { error: 'No response from Awn AI.' };
+  return { reply: data.reply };
+}
+
+async function sendAiMessage(text) {
+  const settings = getAwnSettings();
+  if (!settings.apiKey) { showToast('Add your Awn AI API key first.'); return; }
+  if (aiChatBusy) return;
+  setAiChatBusy(true);
+
+  appendAiBubble('user', text, Date.now());
+  aiTranscript.push({ role: 'teacher', text });
+
+  try {
+    let guard = 0;
+    while (guard++ < 8) {
+      showAiTyping();
+      const prompt = buildAwnPrompt(aiTranscript);
+      const res = await callAwnAPI(settings, prompt);
+      hideAiTyping();
+
+      if (res.error) { appendAiBubble('system', res.error, Date.now()); break; }
+
+      const parsed = parseAwnReply(res.reply);
+
+      if (parsed.toolCall) {
+        aiTranscript.push({ role: 'assistant', text: JSON.stringify({ tool_call: parsed.toolCall }) });
+        const outcome = await handleAiFunctionCall(parsed.toolCall);
+        aiTranscript.push({ role: 'tool', text: parsed.toolCall.name + ': ' + JSON.stringify(outcome) });
+        // loop again so the model can react to what just happened
+        continue;
+      }
+
+      appendAiBubble('assistant', parsed.text || "I didn't have anything to add.", Date.now());
+      aiTranscript.push({ role: 'assistant', text: JSON.stringify({ reply: parsed.text || '' }) });
+      break;
+    }
+  } catch (err) {
+    hideAiTyping();
+    appendAiBubble('system', 'Something went wrong: ' + ((err && err.message) || err), Date.now());
+  }
+
+  setAiChatBusy(false);
+}
+
+async function handleAiFunctionCall(fc) {
+  const name = fc.name;
+  const args = fc.args || {};
+  try {
+    if (name === 'list_students') {
+      const students = getStudents().map(s => ({ id: s.id, name: s.name }));
+      return { students, count: students.length };
+    }
+    if (name === 'list_homework') {
+      const list = getAssignments().map(a => ({ id: a.id, title: a.title, type: a.type, dueDate: a.dueAt ? formatDate(a.dueAt) : null }));
+      return { assignments: list, count: list.length };
+    }
+    if (name === 'publish_homework') return await aiPublishHomework(args);
+    if (name === 'send_message') return await aiSendMessage(args);
+    return { error: 'Unknown tool: ' + name };
+  } catch (err) {
+    return { error: (err && err.message) || String(err) };
+  }
+}
+
+async function aiPublishHomework(args) {
+  const title = String(args.title || '').trim();
+  const description = String(args.description || '').trim();
+  if (!title || !description) return { error: 'Missing a title or description — ask the teacher what topic they want and try again.' };
+
+  let type = String(args.type || '').trim().toLowerCase();
+  if (!['written', 'code', 'mcq'].includes(type)) type = ['written', 'code', 'mcq'][Math.floor(Math.random() * 3)];
+
+  const objectives = Array.isArray(args.objectives) ? args.objectives.map(o => String(o || '').trim()).filter(Boolean).slice(0, 6) : [];
+  const dueAt = (typeof args.dueInDays === 'number' && isFinite(args.dueInDays) && args.dueInDays > 0)
+    ? Date.now() + Math.round(args.dueInDays) * 86400000 : null;
+
+  const newAssignment = { id: 'hw_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), title, description, objectives, type, dueAt, createdAt: Date.now() };
+  let summaryFormat = 'written';
+
+  if (type === 'code') {
+    const lang = String(args.codeLang || '').trim().toLowerCase();
+    newAssignment.codeLang = ['html', 'css', 'js'].includes(lang) ? lang : 'html';
+    newAssignment.starter = typeof args.starter === 'string' ? args.starter : '';
+    summaryFormat = newAssignment.codeLang.toUpperCase() + ' coding';
+  } else if (type === 'mcq') {
+    const raw = Array.isArray(args.mcqQuestions) ? args.mcqQuestions : [];
+    const cleaned = raw.map(q => {
+      const options = Array.isArray(q.options) ? q.options.slice(0, 4).map(o => String(o || '').trim()).filter(Boolean) : [];
+      while (options.length < 4) options.push('Option ' + (options.length + 1));
+      const correct = Number.isInteger(q.correctIndex) && q.correctIndex >= 0 && q.correctIndex < 4 ? q.correctIndex : 0;
+      return { q: String(q.q || '').trim(), options, correct };
+    }).filter(q => q.q);
+    if (cleaned.length === 0) return { error: 'No valid MCQ questions came through — try again with a clearer topic.' };
+    newAssignment.mcqQuestions = cleaned;
+    summaryFormat = cleaned.length + '-question MCQ';
+  }
+
+  const ok = await showConfirm({
+    title: 'Publish this homework?',
+    message: `"${title}" — ${summaryFormat}${newAssignment.dueAt ? (', due ' + formatDate(newAssignment.dueAt)) : ', no due date'}. This assigns it to the whole class right away.`,
+    confirmLabel: 'Publish',
+    cancelLabel: 'Skip'
+  });
+  if (!ok) return { status: 'declined_by_teacher' };
+
+  saveAssignments(list => list.concat([newAssignment]));
+  showToast('Homework assigned to class!');
+  return { status: 'published', id: newAssignment.id, title, type, dueDate: newAssignment.dueAt ? formatDate(newAssignment.dueAt) : null };
+}
+
+async function aiSendMessage(args) {
+  const text = String(args.text || '').trim();
+  if (!text) return { error: 'Missing message text.' };
+  const audience = String(args.audience || '').trim().toLowerCase();
+
+  if (audience === 'all') {
+    const students = getStudents();
+    if (students.length === 0) return { error: 'There are no enrolled students yet.' };
+    const ok = await showConfirm({
+      title: 'Message the whole class?',
+      message: `Send to all ${students.length} student${students.length === 1 ? '' : 's'}: "${text}"`,
+      confirmLabel: 'Send to All',
+      cancelLabel: 'Skip'
+    });
+    if (!ok) return { status: 'declined_by_teacher' };
+    students.forEach(s => sendMessage(s.id, 'admin', text));
+    showToast('Message sent to all students!');
+    return { status: 'sent', audience: 'all', recipientCount: students.length };
+  }
+
+  if (audience === 'one') {
+    const query = String(args.student || '').trim();
+    if (!query) return { error: 'No student name or ID was given.' };
+    const student = findStudentByNameOrId(query);
+    if (!student) return { error: `No student matching "${query}" was found — try list_students to see the roster.` };
+    const ok = await showConfirm({
+      title: 'Send this message?',
+      message: `To ${student.name}: "${text}"`,
+      confirmLabel: 'Send',
+      cancelLabel: 'Skip'
+    });
+    if (!ok) return { status: 'declined_by_teacher' };
+    sendMessage(student.id, 'admin', text);
+    showToast('Message sent to ' + student.name.split(' ')[0] + '!');
+    return { status: 'sent', audience: 'one', student: student.name };
+  }
+
+  return { error: "audience must be 'all' or 'one'." };
 }
 
 // ============================================================
@@ -3879,6 +4309,94 @@ function bindEvents() {
         cancelLabel: 'Cancel',
         danger: true
       }).then(ok => { if (ok) importBackupFile(file); importInput.value = ''; });
+    });
+  }
+
+  // ---- AI Manager (admin) ----
+  const aiSettingsModal = document.getElementById('ai-settings-modal');
+  const openAiSettingsModal = () => { if (aiSettingsModal) aiSettingsModal.classList.remove('hidden'); };
+  const closeAiSettingsModal = () => { if (aiSettingsModal) aiSettingsModal.classList.add('hidden'); };
+
+  const aiSettingsOpen = document.getElementById('ai-settings-open');
+  if (aiSettingsOpen) aiSettingsOpen.addEventListener('click', openAiSettingsModal);
+
+  const aiSettingsClose = document.getElementById('ai-settings-close');
+  if (aiSettingsClose) aiSettingsClose.addEventListener('click', closeAiSettingsModal);
+
+  const aiSettingsCancel = document.getElementById('ai-settings-cancel');
+  if (aiSettingsCancel) aiSettingsCancel.addEventListener('click', closeAiSettingsModal);
+
+  const aiSettingsBackdrop = document.getElementById('ai-settings-backdrop');
+  if (aiSettingsBackdrop) aiSettingsBackdrop.addEventListener('click', closeAiSettingsModal);
+
+  const aiKeyToggle = document.getElementById('ai-key-toggle');
+  if (aiKeyToggle) {
+    aiKeyToggle.addEventListener('click', () => {
+      const input = document.getElementById('ai-key-input');
+      if (!input) return;
+      const isPw = input.type === 'password';
+      input.type = isPw ? 'text' : 'password';
+      aiKeyToggle.innerHTML = isPw ? ic('eyeOff', 'w-4 h-4') : ic('eye', 'w-4 h-4');
+    });
+  }
+
+  const aiSettingsSave = document.getElementById('ai-settings-save');
+  if (aiSettingsSave) {
+    aiSettingsSave.addEventListener('click', () => {
+      const keyInput = document.getElementById('ai-key-input');
+      const apiKey = keyInput ? keyInput.value.trim() : '';
+      saveAwnSettings({ apiKey });
+      showToast(apiKey ? 'Awn AI settings saved on this device.' : 'API key cleared.');
+
+      // Update the page in place instead of a full render() — keeps the
+      // conversation exactly as it was rather than wiping the chat panel.
+      const statusEl = document.getElementById('ai-settings-status');
+      if (statusEl) {
+        statusEl.textContent = apiKey ? '● Connected on this device' : '○ Not connected';
+        statusEl.className = 'font-mono2 text-[10px] tracking-widest uppercase ' + (apiKey ? 'text-moss' : 'text-graphite') + ' mb-4';
+      }
+      const settingsOpenBtn = document.getElementById('ai-settings-open');
+      if (settingsOpenBtn) {
+        const dot = settingsOpenBtn.querySelector('span');
+        if (apiKey && dot) dot.remove();
+        if (!apiKey && !dot) settingsOpenBtn.insertAdjacentHTML('beforeend', '<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-redline"></span>');
+      }
+      const chatInput = document.getElementById('ai-chat-input');
+      const chatSendBtn = document.getElementById('ai-chat-send-btn');
+      if (chatInput) {
+        chatInput.disabled = !apiKey || aiChatBusy;
+        chatInput.placeholder = apiKey ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your Awn AI API key to start chatting';
+      }
+      if (chatSendBtn) chatSendBtn.disabled = !apiKey || aiChatBusy;
+      if (aiDisplayLog.length === 0) {
+        const scroller = document.getElementById('ai-chat-scroll');
+        if (scroller) scroller.innerHTML = aiChatScrollInnerHtml(!!apiKey);
+      }
+      closeAiSettingsModal();
+    });
+  }
+
+  const aiClearChatBtn = document.getElementById('ai-clear-chat-btn');
+  if (aiClearChatBtn) {
+    aiClearChatBtn.addEventListener('click', () => {
+      if (aiChatBusy) return;
+      aiTranscript = [];
+      aiDisplayLog = [];
+      const scroller = document.getElementById('ai-chat-scroll');
+      if (scroller) scroller.innerHTML = aiChatScrollInnerHtml(!!getAwnSettings().apiKey);
+    });
+  }
+
+  const aiChatForm = document.getElementById('ai-chat-form');
+  if (aiChatForm) {
+    aiChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (aiChatBusy) return;
+      const input = document.getElementById('ai-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      sendAiMessage(text);
     });
   }
 }
