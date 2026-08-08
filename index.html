@@ -648,12 +648,11 @@ function saveGeminiSettings(patch) {
   localStorage.setItem(STORAGE_KEYS.geminiSettings, JSON.stringify(next));
   return next;
 }
-// Awn AI is the AI Manager's active provider — same local-only storage
-// rule as Gemini above: this key never leaves the device.
+// Awn AI is the AI Manager's active provider. The API key is fixed in code
+// (Runtime/badtheorylabs) rather than entered per-device, so this always
+// reports as connected — nothing is read from localStorage anymore.
 function getAwnSettings() {
-  let parsed = null;
-  try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.awnSettings)); } catch (e) { parsed = null; }
-  return Object.assign({ apiKey: '' }, parsed || {});
+  return { apiKey: RUNTIME_API_KEY };
 }
 function saveAwnSettings(patch) {
   const next = Object.assign({}, getAwnSettings(), patch);
@@ -2221,14 +2220,16 @@ function setAiChatBusy(busy) {
 }
 
 // ---- Awn AI wiring ----
-// Awn AI's endpoint only takes a single { prompt } string and returns a
-// single { reply } string — no built-in concept of conversation history or
-// function/tool calling. So instead of native tool calls (like Gemini has),
-// we ask the model to always answer in one of two strict JSON shapes, and
-// we build the full transcript into one prompt string on every turn:
+// Runs through Runtime's OpenAI-compatible /chat/completions endpoint, sent
+// as a single user message — no built-in concept of conversation history or
+// function/tool calling on our side. So instead of native tool calls (like
+// Gemini has), we ask the model to always answer in one of two strict JSON
+// shapes, and we build the full transcript into one prompt string on every turn:
 //   {"tool_call": {"name": "...", "args": {...}}}   <- to take an action
 //   {"reply": "..."}                                 <- to just chat
-const AWN_API_URL = 'https://c38c9083-bc8b-4906-8c3f-d0321d373f9d.lovableproject.com/api/public/v1/chat';
+const RUNTIME_API_KEY = 'gw_nimbus-7_528d0ea6e94d6a64c95830feaa891fa2094c102ba02495d3';
+const RUNTIME_API_BASE_URL = 'https://api.badtheorylabs.com/v1';
+const RUNTIME_MODEL = 'free';
 
 const AWN_SYSTEM_PROMPT = `You are the AI Manager inside Nimbus, a local-first classroom LMS. You're chatting with the teacher/admin who runs the class — never a student. You can draft and publish homework and message students using the tools described below.
 
@@ -2287,10 +2288,13 @@ function parseAwnReply(raw) {
 async function callAwnAPI(settings, promptText) {
   let resp;
   try {
-    resp = await fetch(AWN_API_URL, {
+    resp = await fetch(RUNTIME_API_BASE_URL + '/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey },
-      body: JSON.stringify({ prompt: promptText })
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + RUNTIME_API_KEY },
+      body: JSON.stringify({
+        model: RUNTIME_MODEL,
+        messages: [{ role: 'user', content: promptText }]
+      })
     });
   } catch (e) {
     return { error: "Couldn't reach Awn AI — check your connection." };
@@ -2298,11 +2302,14 @@ async function callAwnAPI(settings, promptText) {
   let data = null;
   try { data = await resp.json(); } catch (e) { /* non-JSON error body, fall through */ }
   if (!resp.ok) {
-    const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('Request failed (' + resp.status + ')');
+    const errMsg = data && data.error ? (data.error.message || data.error) : null;
+    const msg = errMsg || (data && data.message) || ('Request failed (' + resp.status + ')');
     return { error: String(msg) };
   }
-  if (!data || typeof data.reply !== 'string') return { error: 'No response from Awn AI.' };
-  return { reply: data.reply };
+  const reply = data && data.choices && data.choices[0] && data.choices[0].message
+    && typeof data.choices[0].message.content === 'string' ? data.choices[0].message.content : null;
+  if (reply === null) return { error: 'No response from Awn AI.' };
+  return { reply };
 }
 
 async function sendAiMessage(text) {
