@@ -633,10 +633,10 @@ function removeStudent(studentId) {
   if (activeReviewKey && activeReviewKey.studentId === studentId) activeReviewKey = null;
 }
 
-// ---- AI Manager settings — the Gemini API key/model live only on this
-// device's localStorage. They're intentionally never passed through
-// mutateCloudList/nimbusCloud — it's a local credential, not classroom data,
-// so it should never leave the device or sync to anyone else's browser.
+// ---- AI Manager settings — the Gemini API key lives only on this device's
+// localStorage. It's intentionally never passed through mutateCloudList/
+// nimbusCloud — it's a local credential, not classroom data, so it should
+// never leave the device or sync to anyone else's browser.
 const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 function getGeminiSettings() {
   let parsed = null;
@@ -648,12 +648,12 @@ function saveGeminiSettings(patch) {
   localStorage.setItem(STORAGE_KEYS.geminiSettings, JSON.stringify(next));
   return next;
 }
-// The AI Manager's provider is Google's Gemini API, called directly. The API
-// key is fixed in code (free tier, from Google AI Studio) rather than entered
-// per-device, so this always reports as connected — nothing is read from
-// localStorage anymore.
+// The AI Manager's provider is Google's Gemini API, called directly with
+// whatever key the teacher pasted into AI Settings on this device.
 function getAwnSettings() {
-  return { apiKey: GEMINI_API_KEY };
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.awnSettings)); } catch (e) { parsed = null; }
+  return Object.assign({ apiKey: '' }, parsed || {});
 }
 function saveAwnSettings(patch) {
   const next = Object.assign({}, getAwnSettings(), patch);
@@ -2301,8 +2301,7 @@ function parseAwnReply(raw) {
   return { text };
 }
 
-const GEMINI_API_KEY = 'PASTE_YOUR_GEMINI_API_KEY_HERE';
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
 
 async function callAwnAPI(settings, promptText) {
@@ -2310,7 +2309,7 @@ async function callAwnAPI(settings, promptText) {
   try {
     resp = await fetch(GEMINI_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
     });
   } catch (e) {
