@@ -648,11 +648,12 @@ function saveGeminiSettings(patch) {
   localStorage.setItem(STORAGE_KEYS.geminiSettings, JSON.stringify(next));
   return next;
 }
-// Awn AI is the AI Manager's active provider. The API key is fixed in code
-// (Runtime/badtheorylabs) rather than entered per-device, so this always
-// reports as connected — nothing is read from localStorage anymore.
+// The AI Manager's provider is Google's Gemini API, called directly. The API
+// key is fixed in code (free tier, from Google AI Studio) rather than entered
+// per-device, so this always reports as connected — nothing is read from
+// localStorage anymore.
 function getAwnSettings() {
-  return { apiKey: RUNTIME_API_KEY };
+  return { apiKey: GEMINI_API_KEY };
 }
 function saveAwnSettings(patch) {
   const next = Object.assign({}, getAwnSettings(), patch);
@@ -2080,7 +2081,7 @@ function renderAdminAI(session) {
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <button type="button" id="ai-settings-open" title="Awn AI settings" class="relative w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">
+          <button type="button" id="ai-settings-open" title=" AI settings" class="relative w-9 h-9 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">
             ${ic('settingsGear', 'w-4 h-4')}
             ${connected ? '' : '<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-redline"></span>'}
           </button>
@@ -2094,7 +2095,7 @@ function renderAdminAI(session) {
 
       <form id="ai-chat-form" class="shrink-0 px-6 py-4 border-t border-ink/10 flex items-center gap-3">
         <input id="ai-chat-input" type="text" autocomplete="off" ${connected ? '' : 'disabled'}
-          placeholder="${connected ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your Awn AI API key to start chatting'}"
+          placeholder="${connected ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your AI API key to start chatting'}"
           class="flex-1 px-4 py-3 rounded-full bg-paper/60 border border-ink/10 outline-none text-sm text-ink placeholder:text-graphite/50 focus:border-redline transition-colors disabled:opacity-50" />
         <button type="submit" id="ai-chat-send-btn" ${connected ? '' : 'disabled'} class="btn-press w-11 h-11 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 shadow-md shadow-black/15 disabled:opacity-40">${ic('sendHorizontal', 'w-4 h-4')}</button>
       </form>
@@ -2107,7 +2108,7 @@ function renderAdminAI(session) {
       <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-8 h-8 rounded-xl bg-ink/5 flex items-center justify-center shrink-0">${ic('settingsGear', 'w-4 h-4 text-ink/70')}</div>
-          <h2 class="font-display font-semibold text-lg text-ink truncate">Awn AI Settings</h2>
+          <h2 class="font-display font-semibold text-lg text-ink truncate"> AI Settings</h2>
         </div>
         <button type="button" id="ai-settings-close" class="w-8 h-8 rounded-full hover:bg-ink/5 flex items-center justify-center text-graphite shrink-0">${ic('x', 'w-4 h-4')}</button>
       </div>
@@ -2116,7 +2117,7 @@ function renderAdminAI(session) {
         ${connected ? '● Connected on this device' : '○ Not connected'}
       </p>
 
-      <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block">Awn AI API Key</label>
+      <label class="font-mono2 text-[10px] tracking-widest uppercase text-graphite mb-1.5 block"> AI API Key</label>
       <div class="flex items-center gap-2 px-4 py-3 rounded-xl bg-paper/50 border border-ink/10 focus-within:border-redline transition-colors mb-1.5">
         ${ic('lock', 'w-4 h-4 text-graphite/50 shrink-0')}
         <input id="ai-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="awn_..." value="${escapeHtml(settings.apiKey)}"
@@ -2141,7 +2142,7 @@ function aiChatScrollInnerHtml(connected) {
     return `
     <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-10">
       <div class="w-11 h-11 rounded-full bg-ink/5 flex items-center justify-center mb-1">${ic('sparkle', 'w-5 h-5 text-ink/50')}</div>
-      <p class="text-sm font-medium text-ink">${connected ? 'Ask it to draft homework or message your class.' : 'Add an Awn AI API key to get started.'}</p>
+      <p class="text-sm font-medium text-ink">${connected ? 'Ask it to draft homework or message your class.' : 'Add an AI API key to get started.'}</p>
       ${connected ? `<p class="text-xs text-graphite max-w-xs">Try: "Give the class a normal homework based on HTML" or "Tell all students to finish today's homework."</p>` : ''}
     </div>`;
   }
@@ -2219,18 +2220,15 @@ function setAiChatBusy(busy) {
   if (btn) btn.disabled = busy || !hasKey;
 }
 
-// ---- Awn AI wiring ----
-// Runs through Runtime's OpenAI-compatible /chat/completions endpoint, sent
-// as a single user message — no built-in concept of conversation history or
-// function/tool calling on our side. So instead of native tool calls (like
-// Gemini has), we ask the model to always answer in one of two strict JSON
-// shapes, and we build the full transcript into one prompt string on every turn:
+// ---- AI Manager wiring ----
+// Calls Google's Gemini API directly (generativelanguage.googleapis.com) using
+// a free-tier API key from Google AI Studio, sent as a single user message —
+// no built-in concept of conversation history or function/tool calling on our
+// side. So instead of native tool calls, we ask the model to always answer in
+// one of two strict JSON shapes, and we build the full transcript into one
+// prompt string on every turn:
 //   {"tool_call": {"name": "...", "args": {...}}}   <- to take an action
 //   {"reply": "..."}                                 <- to just chat
-const RUNTIME_API_KEY = 'gw_nimbus-7_528d0ea6e94d6a64c95830feaa891fa2094c102ba02495d3';
-const RUNTIME_API_BASE_URL = 'https://api.badtheorylabs.com/v1';
-const RUNTIME_MODEL = 'free';
-
 const AWN_SYSTEM_PROMPT = `You are the AI Manager inside Nimbus, a local-first classroom LMS. You're chatting with the teacher/admin who runs the class — never a student. You can draft and publish homework and message students using the tools described below.
 
 Available tools:
@@ -2285,36 +2283,37 @@ function parseAwnReply(raw) {
   return { text };
 }
 
+const GEMINI_API_KEY = 'PASTE_YOUR_GEMINI_API_KEY_HERE';
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
+
 async function callAwnAPI(settings, promptText) {
   let resp;
   try {
-    resp = await fetch(RUNTIME_API_BASE_URL + '/chat/completions', {
+    resp = await fetch(GEMINI_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + RUNTIME_API_KEY },
-      body: JSON.stringify({
-        model: RUNTIME_MODEL,
-        messages: [{ role: 'user', content: promptText }]
-      })
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
     });
   } catch (e) {
-    return { error: "Couldn't reach Awn AI — check your connection." };
+    return { error: "Couldn't reach Gemini — check your connection." };
   }
   let data = null;
   try { data = await resp.json(); } catch (e) { /* non-JSON error body, fall through */ }
   if (!resp.ok) {
     const errMsg = data && data.error ? (data.error.message || data.error) : null;
-    const msg = errMsg || (data && data.message) || ('Request failed (' + resp.status + ')');
-    return { error: String(msg) };
+    return { error: String(errMsg || ('Request failed (' + resp.status + ')')) };
   }
-  const reply = data && data.choices && data.choices[0] && data.choices[0].message
-    && typeof data.choices[0].message.content === 'string' ? data.choices[0].message.content : null;
-  if (reply === null) return { error: 'No response from Awn AI.' };
+  const candidate = data && data.candidates && data.candidates[0];
+  const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
+  const reply = part && typeof part.text === 'string' ? part.text : null;
+  if (reply === null) return { error: 'No response from Gemini.' };
   return { reply };
 }
 
 async function sendAiMessage(text) {
   const settings = getAwnSettings();
-  if (!settings.apiKey) { showToast('Add your Awn AI API key first.'); return; }
+  if (!settings.apiKey) { showToast('Add your AI API key first.'); return; }
   if (aiChatBusy) return;
   setAiChatBusy(true);
 
@@ -4353,7 +4352,7 @@ function bindEvents() {
       const keyInput = document.getElementById('ai-key-input');
       const apiKey = keyInput ? keyInput.value.trim() : '';
       saveAwnSettings({ apiKey });
-      showToast(apiKey ? 'Awn AI settings saved on this device.' : 'API key cleared.');
+      showToast(apiKey ? 'AI settings saved on this device.' : 'API key cleared.');
 
       // Update the page in place instead of a full render() — keeps the
       // conversation exactly as it was rather than wiping the chat panel.
@@ -4372,7 +4371,7 @@ function bindEvents() {
       const chatSendBtn = document.getElementById('ai-chat-send-btn');
       if (chatInput) {
         chatInput.disabled = !apiKey || aiChatBusy;
-        chatInput.placeholder = apiKey ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your Awn AI API key to start chatting';
+        chatInput.placeholder = apiKey ? 'e.g. Give the class a normal homework on HTML forms' : 'Add your AI API key to start chatting';
       }
       if (chatSendBtn) chatSendBtn.disabled = !apiKey || aiChatBusy;
       if (aiDisplayLog.length === 0) {
