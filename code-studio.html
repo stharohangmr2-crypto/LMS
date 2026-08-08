@@ -298,6 +298,24 @@
     pointer-events: none;
     background: transparent;
   }
+  /* Drawn on top of the syntax-colored text (but below codeInput's own
+     z-index:1, so the caret stays visible through it) as a real, opaque
+     element — not a browser text-selection color, which is what Find
+     used at first: relying on ::selection turned out not to render
+     consistently in every place this runs (some in-app webviews just
+     don't paint it the same way desktop Chrome does). A plain
+     positioned box behind semi-transparent color can't have that
+     problem — it's always visible the moment its inline style says so. */
+  .find-highlight-box {
+    position: absolute;
+    display: none;
+    top: 0; left: 0;
+    background: var(--accent);
+    opacity: 0.55;
+    border-radius: 3px;
+    pointer-events: none;
+  }
+  .find-highlight-box.show { display: block; }
   /* Browsers ship a default stylesheet rule forcing code/pre/kbd/samp to
      monospace. That rule matches #highlightCode directly, which beats the
      font this element would otherwise just inherit from its .highlight-layer
@@ -315,6 +333,23 @@
     outline: none;
     z-index: 1;
     -webkit-text-fill-color: transparent;
+  }
+  /* codeInput's own text is invisible (the highlight-layer underneath
+     draws the real syntax-colored glyphs) — but a selection still needs
+     to read clearly, and Find relies on this to actually show a match:
+     it just sets the selection range, on purpose without moving focus,
+     so this has to look the same highlighted whether or not the
+     textarea is currently focused. Filling in a real color+background
+     here turns the selected span into an opaque "highlighter" swatch
+     over the syntax colors, and does it regardless of focus state. */
+  #codeInput::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+    -webkit-text-fill-color: var(--accent-ink);
+  }
+  #codeInput::-moz-selection {
+    background: var(--accent);
+    color: var(--accent-ink);
   }
   .code-input.wrap, .highlight-layer.wrap { white-space: pre-wrap; word-break: break-word; }
 
@@ -553,6 +588,77 @@
   .popup-gap { height: 8px; }
   .popup-menu.preview-menu { top: 50px; }
 
+  /* ---------- Find & Replace bar (Ctrl+F) ---------- */
+  .find-replace-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 15;
+    background: var(--bg-panel);
+    box-shadow: var(--raised-lg);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    padding: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    transform: translateY(8px);
+    opacity: 0;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  .find-replace-bar.show { display: flex; transform: translateY(0); opacity: 1; }
+  .frb-row { display: flex; align-items: center; gap: 6px; }
+  .frb-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-editor-well);
+    border: none;
+    color: var(--text-main);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    font-size: 13.5px;
+    font-family: var(--font-code);
+    outline: none;
+    box-shadow: var(--pressed-sm);
+    transition: box-shadow 0.12s ease;
+  }
+  .frb-input:focus { box-shadow: var(--pressed-sm), 0 0 0 2px var(--accent); }
+  .frb-count {
+    color: var(--text-faint);
+    font-size: 11.5px;
+    font-family: var(--font-code);
+    white-space: nowrap;
+    min-width: 46px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .frb-icon-btn {
+    background: var(--base);
+    border: none;
+    color: var(--text-dim);
+    width: 30px; height: 30px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--raised-sm);
+    flex-shrink: 0;
+  }
+  .frb-icon-btn:active { box-shadow: var(--pressed-sm); }
+  .frb-btn {
+    background: var(--base);
+    color: var(--text-dim);
+    border: none;
+    border-radius: var(--radius-pill);
+    padding: 9px 15px;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--raised-sm);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .frb-btn:active { box-shadow: var(--pressed-sm); }
+  .frb-btn.frb-primary { background: var(--accent); color: var(--accent-ink); }
+
   /* ---------- Modal ---------- */
   .modal-scrim {
     position: absolute; inset: 0;
@@ -685,6 +791,28 @@
   .setting-row-top { display: flex; align-items: center; justify-content: space-between; }
   .setting-value { color: var(--accent); font-weight: 800; font-size: 13px; font-family: var(--font-code); }
   .setting-desc { color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+  .shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 4px;
+  }
+  .shortcut-row .sc-label-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .shortcut-row .sc-label { color: var(--text-main); font-size: 13.5px; font-weight: 600; }
+  .shortcut-row .sc-hint { color: var(--text-faint); font-size: 11px; }
+  .shortcut-row .sc-keys { display: flex; gap: 5px; flex-shrink: 0; }
+  .sc-key {
+    background: var(--bg-editor-well);
+    color: var(--accent);
+    font-family: var(--font-code);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 7px;
+    box-shadow: var(--pressed-sm);
+    white-space: nowrap;
+  }
   .font-slider {
     -webkit-appearance: none;
     appearance: none;
@@ -870,6 +998,17 @@
      the way an actual terminal's prompt line reads. */
   .log-line.cmd { color: var(--text-main); font-weight: 600; }
   .log-line.cmd .cmd-prompt { color: var(--text-dim); font-weight: 400; margin-right: 6px; }
+  /* AI assistant replies get the same tinted-row treatment as
+     errors/warnings, but in the accent color, so they read as "a
+     distinct voice" in the scrollback rather than plain output. */
+  .log-line.ai {
+    color: var(--accent);
+    background: rgba(120, 170, 255, 0.08);
+    border-left: 3px solid var(--accent);
+    margin: 2px -14px 2px -17px;
+    padding: 3px 14px 3px 14px;
+  }
+  .log-line.ai-pending { color: var(--text-dim); font-style: italic; }
   .term-input-row {
     display: flex; align-items: center; gap: 8px;
     padding: 10px 14px;
@@ -930,7 +1069,7 @@
   <div class="editor-wrap" id="editorWrap">
     <div class="line-numbers" id="lineNumbers">1</div>
     <div class="code-area">
-      <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+      <pre class="highlight-layer" id="highlightLayer"><code id="highlightCode"></code><div class="find-highlight-box" id="findHighlightBox"></div></pre><textarea class="code-input" id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
     </div>
     <div class="minimap" id="minimap" title="Minimap">
       <canvas class="minimap-canvas" id="minimapCanvas"></canvas>
@@ -940,12 +1079,29 @@
       No files yet.<br>Open the menu (&#9776;) and tap <br>New file<br> to get started.
     </div>
     <div class="fab" id="fab">&#8963;</div>
+
+    <!-- Find & Replace bar (Ctrl+F) -->
+    <div class="find-replace-bar" id="findReplaceBar">
+      <div class="frb-row">
+        <input type="text" class="frb-input" id="findInput" placeholder="Find" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <span class="frb-count" id="findCount"></span>
+        <button class="frb-icon-btn" id="findPrevBtn" title="Previous match (Shift+Enter)">&#9650;</button>
+        <button class="frb-icon-btn" id="findNextBtn" title="Next match (Enter)">&#9660;</button>
+        <button class="frb-icon-btn" id="findCloseBtn" title="Close (Esc)">&#10005;</button>
+      </div>
+      <div class="frb-row">
+        <input type="text" class="frb-input" id="replaceInput" placeholder="Replace" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="frb-btn" id="replaceBtn" title="Replace this match">Replace</button>
+        <button class="frb-btn frb-primary" id="replaceAllBtn" title="Replace every match">All</button>
+      </div>
+    </div>
   </div>
 
   <!-- Bottom symbol toolbar -->
   <div class="symbol-toolbar">
     <div class="toolbar-actions">
       <div class="ctrl-btn" id="btnCtrl" title="Ctrl">Ctrl</div>
+      <div class="ctrl-btn" id="btnAlt" title="Alt">Alt</div>
       <span class="toolbar-divider"></span>
       <div class="tb-action-btn" id="btnOutdent" title="Outdent">&#8676;</div>
       <div class="tb-action-btn" id="btnIndent" title="Indent">&#8677;</div>
@@ -980,6 +1136,7 @@
       <span class="pi-icon">&#8617;</span><span class="pi-label">Word wrap</span><span class="pi-check" id="chkWordWrap"></span>
     </div>
     <div class="popup-item" data-action="beautify">Beautify indentation</div>
+    <div class="popup-item" data-action="findreplace">Find &amp; Replace</div>
     <div class="popup-item" data-action="selectall">Select all</div>
     <div class="popup-item" data-action="help2">Connect syntax help</div>
   </div>
@@ -1141,6 +1298,7 @@
   // Mirrors VS Code's own default (on). Actual visibility also requires
   // the screen to be tablet/desktop width — see updateMinimapAvailability().
   var minimapEnabled = true;
+  var aiApiKey = '';        // Gemini API key, entered via Settings, stored locally only
   // Every option here uses only built-in generic CSS font families
   // (monospace/serif/sans-serif/cursive) or very common OS font names as a
   // first choice — there's no @font-face/network font loading in this
@@ -1259,7 +1417,7 @@
     });
     var payload = {
       version: SAVE_VERSION, files: cleanFiles, openTabs: openTabs, activeFile: activeFile, recentFiles: recentFiles,
-      settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey, typingHelpers: typingHelpers, minimapEnabled: minimapEnabled }
+      settings: { wordWrap: wordWrap, fontSize: fontSize, fontStyleKey: fontStyleKey, typingHelpers: typingHelpers, minimapEnabled: minimapEnabled, aiApiKey: aiApiKey }
     };
     var payloadStr = JSON.stringify(payload);
     try {
@@ -1308,6 +1466,7 @@
             applyFontStyle(data.settings.fontStyleKey || 'mono');
             typingHelpers = !!data.settings.typingHelpers;
             minimapEnabled = data.settings.minimapEnabled === undefined ? true : !!data.settings.minimapEnabled;
+            aiApiKey = data.settings.aiApiKey || '';
           }
           cb();
           return;
@@ -2275,19 +2434,36 @@
   }
 
   // The armed/latching Ctrl button: tap it once, then tap the next
-  // letter — z/y undo/redo, a select all, c/x/v copy/cut/paste — and it's
-  // consumed as that shortcut instead of being typed. Any other key just
-  // disarms it and types normally, so it can't get "stuck" on by accident.
+  // letter — z/y undo/redo, a select all, c/x/v copy/cut/paste, f find,
+  // s save — and it's consumed as that shortcut instead of being typed.
+  // Any other key just disarms it and types normally, so it can't get
+  // "stuck" on by accident. Alt mirrors the exact same mechanism on its
+  // own button/flag, for the r/c shortcuts that use Alt on a real
+  // keyboard — a phone has no physical Ctrl or Alt key to hold down, so
+  // both are simulated as a tap-then-tap-the-letter latch instead.
   var ctrlArmed = false;
-  var CTRL_LETTERS = { z: 1, y: 1, a: 1, c: 1, x: 1, v: 1 };
+  var altArmed = false;
+  var CTRL_LETTERS = { z: 1, y: 1, a: 1, c: 1, x: 1, v: 1, f: 1, s: 1 };
+  var ALT_LETTERS = { r: 1, c: 1 };
   var btnCtrl = document.getElementById('btnCtrl');
+  var btnAlt = document.getElementById('btnAlt');
   function setCtrlArmed(on){
     ctrlArmed = on;
     btnCtrl.classList.toggle('armed', on);
+    if(on) setAltArmed(false);
+  }
+  function setAltArmed(on){
+    altArmed = on;
+    btnAlt.classList.toggle('armed', on);
+    if(on) setCtrlArmed(false);
   }
   btnCtrl.addEventListener('click', function(){
     codeInput.focus();
     setCtrlArmed(!ctrlArmed);
+  });
+  btnAlt.addEventListener('click', function(){
+    codeInput.focus();
+    setAltArmed(!altArmed);
   });
   function performCtrlShortcut(letter){
     if(letter === 'z'){ undoActive(); return true; }
@@ -2296,6 +2472,13 @@
     if(letter === 'c'){ copySelection(); return true; }
     if(letter === 'x'){ cutSelection(); return true; }
     if(letter === 'v'){ pasteIntoEditor(); return true; }
+    if(letter === 'f'){ openFindBar(); return true; }
+    if(letter === 's'){ saveActive(); return true; }
+    return false;
+  }
+  function performAltShortcut(letter){
+    if(letter === 'r'){ runPreview(); return true; }
+    if(letter === 'c'){ toggleConsolePanel(); return true; }
     return false;
   }
 
@@ -2336,10 +2519,13 @@
   // for the same reason: the on-screen Ctrl button needs the next typed
   // character, however it was typed, not a real keydown modifier.
   codeInput.addEventListener('beforeinput', function(e){
-    if(ctrlArmed){
+    if(ctrlArmed || altArmed){
       var letter = e.data && e.data.length === 1 ? e.data.toLowerCase() : '';
+      var wasAlt = altArmed;
       setCtrlArmed(false);
-      if(letter && CTRL_LETTERS[letter]){
+      setAltArmed(false);
+      var letterMap = wasAlt ? ALT_LETTERS : CTRL_LETTERS;
+      if(letter && letterMap[letter]){
         // Block the letter first, unconditionally — then run the actual
         // action on its own, once this beforeinput event has fully
         // finished. Doing execCommand('cut'/'copy') or touching the
@@ -2347,7 +2533,9 @@
         // what was letting the plain letter slip through instead of
         // running the shortcut.
         e.preventDefault();
-        setTimeout(function(){ performCtrlShortcut(letter); }, 0);
+        setTimeout(function(){
+          if(wasAlt) performAltShortcut(letter); else performCtrlShortcut(letter);
+        }, 0);
         return;
       }
     }
@@ -2426,6 +2614,15 @@
     touchRecent(name);
     renderAll();
     persist();
+    // Matches found before a tab switch point at offsets in the file
+    // that was open then, not this one — drop them rather than let a
+    // stale index send Next/Replace to the wrong spot in the new file.
+    if(findReplaceBarOpen()){
+      frbMatches = [];
+      frbCurrentIndex = -1;
+      frbClearHighlightBox();
+      frbUpdateCount();
+    }
   }
 
   function closeTab(name){
@@ -2631,6 +2828,7 @@
     moreMenu.classList.remove('show');
     if(action === 'wrap'){ wordWrap = !wordWrap; applyWrapSetting(); setMenuCheck('chkWordWrap', wordWrap); showToast('Word wrap ' + (wordWrap ? 'on' : 'off')); }
     else if(action === 'beautify'){ beautifyActive(); }
+    else if(action === 'findreplace'){ openFindBar(); }
     else if(action === 'selectall'){ codeInput.focus(); codeInput.select(); }
     else if(action === 'help2'){ openModal('help'); }
   });
@@ -2917,12 +3115,89 @@
     minimapRow.appendChild(minimapTop);
     minimapRow.appendChild(minimapDesc);
 
+    var aiRow = document.createElement('div');
+    aiRow.className = 'setting-row column';
+    var aiTop = document.createElement('div');
+    aiTop.className = 'setting-row-top';
+    aiTop.innerHTML = '<span class="setting-label">AI assistant (Gemini)</span>';
+    var aiInput = document.createElement('input');
+    aiInput.type = 'password';
+    aiInput.className = 'frb-input';
+    aiInput.style.width = '100%';
+    aiInput.placeholder = 'Paste your Gemini API key';
+    aiInput.autocomplete = 'off';
+    aiInput.autocapitalize = 'off';
+    aiInput.spellcheck = false;
+    aiInput.value = aiApiKey;
+    var aiShow = document.createElement('span');
+    aiShow.className = 'setting-value';
+    aiShow.style.cursor = 'pointer';
+    aiShow.textContent = 'Show';
+    aiShow.addEventListener('click', function(){
+      var toText = aiInput.type === 'password';
+      aiInput.type = toText ? 'text' : 'password';
+      aiShow.textContent = toText ? 'Hide' : 'Show';
+    });
+    aiTop.appendChild(aiShow);
+    aiInput.addEventListener('change', function(){
+      aiApiKey = aiInput.value.trim();
+      persist();
+      showToast(aiApiKey ? 'Gemini key saved' : 'Gemini key cleared');
+    });
+    var aiDesc = document.createElement('div');
+    aiDesc.className = 'setting-desc';
+    aiDesc.textContent = 'Stored only in this browser and sent directly to Google, never anywhere else. Get a free key at aistudio.google.com/apikey. For quick edits, type ai. followed by what you want \u2014 e.g. "ai.turn on word wrap" or "ai.write a function that reverses a string" \u2014 these apply instantly. For a full new project with live-typed code, use "ai.project(name)" or "ai.start a new project named my-app in html"; leave the name out and one gets picked for you.';
+    aiRow.appendChild(aiTop);
+    aiRow.appendChild(aiInput);
+    aiRow.appendChild(aiDesc);
+
+    var shortcutsHeading = document.createElement('div');
+    shortcutsHeading.className = 'setting-label';
+    shortcutsHeading.style.margin = '18px 0 2px';
+    shortcutsHeading.textContent = 'Keyboard shortcuts (' + KEYBOARD_SHORTCUTS.length + ')';
+    var shortcutsDesc = document.createElement('div');
+    shortcutsDesc.className = 'setting-desc';
+    shortcutsDesc.style.marginBottom = '4px';
+    shortcutsDesc.textContent = 'Ctrl/Alt rows also work by tapping the Ctrl or Alt button in the bottom toolbar, then tapping that letter on your keyboard — no physical Ctrl/Alt key needed.';
+    var shortcutsList = document.createElement('div');
+    KEYBOARD_SHORTCUTS.forEach(function(sc){
+      var row = document.createElement('div');
+      row.className = 'shortcut-row';
+      var labelWrap = document.createElement('span');
+      labelWrap.className = 'sc-label-wrap';
+      var label = document.createElement('span');
+      label.className = 'sc-label';
+      label.textContent = sc.label;
+      labelWrap.appendChild(label);
+      if(sc.mobile){
+        var hint = document.createElement('span');
+        hint.className = 'sc-hint';
+        hint.textContent = sc.mobile;
+        labelWrap.appendChild(hint);
+      }
+      var keysWrap = document.createElement('span');
+      keysWrap.className = 'sc-keys';
+      sc.keys.forEach(function(k){
+        var keyEl = document.createElement('span');
+        keyEl.className = 'sc-key';
+        keyEl.textContent = k;
+        keysWrap.appendChild(keyEl);
+      });
+      row.appendChild(labelWrap);
+      row.appendChild(keysWrap);
+      shortcutsList.appendChild(row);
+    });
+
     modalCard.appendChild(title);
     modalCard.appendChild(wrapRow);
     modalCard.appendChild(helpersRow);
     modalCard.appendChild(fontRow);
     modalCard.appendChild(styleRow);
     modalCard.appendChild(minimapRow);
+    modalCard.appendChild(aiRow);
+    modalCard.appendChild(shortcutsHeading);
+    modalCard.appendChild(shortcutsDesc);
+    modalCard.appendChild(shortcutsList);
   }
 
   function renderHelpModal(){
@@ -2953,6 +3228,372 @@
     actions.appendChild(ok);
     modalCard.appendChild(actions);
   }
+
+  /* ============================================================
+     FIND & REPLACE (Ctrl+F)
+     A floating bar over the top of the editor. The find field
+     searches the active file's exact text (plain substring, not
+     regex) and selects the match inside codeInput; the replace
+     field swaps the currently-selected match (or every match, for
+     Replace All) using execCommand('insertText'), which routes the
+     change through the normal input pipeline further down — so
+     undo, the dirty dot, autosave, and re-highlighting all just work
+     the same as if it had been typed by hand.
+  ============================================================ */
+  var findReplaceBar = document.getElementById('findReplaceBar');
+  var findInput = document.getElementById('findInput');
+  var findCountEl = document.getElementById('findCount');
+  var findPrevBtn = document.getElementById('findPrevBtn');
+  var findNextBtn = document.getElementById('findNextBtn');
+  var findCloseBtn = document.getElementById('findCloseBtn');
+  var replaceInput = document.getElementById('replaceInput');
+  var replaceBtn = document.getElementById('replaceBtn');
+  var replaceAllBtn = document.getElementById('replaceAllBtn');
+  var findHighlightBox = document.getElementById('findHighlightBox');
+
+  var frbQuery = '';
+  var frbMatches = [];
+  var frbCurrentIndex = -1;
+
+  function findAllMatches(content, query){
+    var matches = [];
+    if(!query) return matches;
+    var from = 0;
+    while(true){
+      var found = content.indexOf(query, from);
+      if(found === -1) break;
+      matches.push(found);
+      from = found + query.length;
+    }
+    return matches;
+  }
+
+  // A dedicated hidden mirror div for measuring where a character index
+  // lands on screen inside codeInput — same technique the word-wrap line
+  // numbers use, kept as its own element (not shared with that one) so
+  // toggling word wrap can't leave the wrong whiteSpace/wordBreak baked
+  // into either mirror.
+  var frbMirrorEl = null;
+  function getFrbMirrorEl(){
+    if(frbMirrorEl) return frbMirrorEl;
+    frbMirrorEl = document.createElement('div');
+    frbMirrorEl.style.position = 'absolute';
+    frbMirrorEl.style.visibility = 'hidden';
+    frbMirrorEl.style.top = '0';
+    frbMirrorEl.style.left = '-99999px';
+    frbMirrorEl.style.pointerEvents = 'none';
+    frbMirrorEl.style.margin = '0';
+    frbMirrorEl.style.padding = '0';
+    document.body.appendChild(frbMirrorEl);
+    return frbMirrorEl;
+  }
+
+  // Prepares the mirror to match codeInput's text rendering exactly,
+  // wrap setting included. This has to copy every property that can
+  // change a glyph's width, not just the obvious ones — font-variant in
+  // particular, since the "Small Caps" editor font style swaps lowercase
+  // letters for small capitals with noticeably different widths, and a
+  // mirror measuring in the default variant would drift out of step
+  // with the real text on every single character, not just the last one.
+  function frbSetupMirror(){
+    var cs = getComputedStyle(codeInput);
+    var el = getFrbMirrorEl();
+    el.style.fontFamily = cs.fontFamily;
+    el.style.fontSize = cs.fontSize;
+    el.style.fontStyle = cs.fontStyle;
+    el.style.fontWeight = cs.fontWeight;
+    el.style.fontVariant = cs.fontVariant;
+    el.style.fontStretch = cs.fontStretch;
+    el.style.fontKerning = cs.fontKerning;
+    el.style.fontVariantLigatures = cs.fontVariantLigatures;
+    el.style.lineHeight = cs.lineHeight;
+    el.style.letterSpacing = cs.letterSpacing;
+    el.style.tabSize = cs.tabSize;
+    if(wordWrap){
+      el.style.whiteSpace = 'pre-wrap';
+      el.style.wordBreak = 'break-word';
+      var padLeft = parseFloat(cs.paddingLeft) || 0;
+      var padRight = parseFloat(cs.paddingRight) || 0;
+      el.style.width = Math.max(20, codeInput.clientWidth - padLeft - padRight) + 'px';
+    } else {
+      el.style.whiteSpace = 'pre';
+      el.style.wordBreak = 'normal';
+      el.style.width = 'auto';
+    }
+    return el;
+  }
+
+  // Renders the file's text up to `pos` into the mirror and reads off
+  // where that point landed — the same "invisible clone" trick the
+  // caret-position libraries use, so it's correct in both wrap and
+  // no-wrap mode without hardcoding a line height or character width.
+  // The mirror itself has no padding, so this is relative to the start
+  // of the *text*, not codeInput's own top-left corner — frbPaddedCoords
+  // adds that back in for anything that needs to line up with
+  // codeInput's actual box.
+  function frbMeasureOffset(pos, fullText){
+    var el = frbSetupMirror();
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(fullText.slice(0, pos)));
+    var marker = document.createElement('span');
+    marker.textContent = '\u200b';
+    el.appendChild(marker);
+    var coords = { top: marker.offsetTop, left: marker.offsetLeft };
+    el.innerHTML = '';
+    return coords;
+  }
+
+  // Renders the matched substring itself into a span inside the mirror
+  // and reads off its rendered box — rather than measuring the start and
+  // end boundaries separately and subtracting, which is what was
+  // costing the last character: two independently-rounded sub-pixel
+  // offsets don't always subtract back to the exact width of what's
+  // between them. Asking the browser to lay out that exact span and
+  // reporting its own offsetWidth can't drift from what's actually on
+  // screen, because it's the same measurement the screen used.
+  function frbMeasureSpan(start, end, fullText){
+    var el = frbSetupMirror();
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(fullText.slice(0, start)));
+    var span = document.createElement('span');
+    span.textContent = fullText.slice(start, end) || '\u200b';
+    el.appendChild(span);
+    var box = { top: span.offsetTop, left: span.offsetLeft, width: span.offsetWidth, height: span.offsetHeight };
+    el.innerHTML = '';
+    return box;
+  }
+
+  function frbPaddedSpan(start, end, fullText){
+    var box = frbMeasureSpan(start, end, fullText);
+    var cs = getComputedStyle(codeInput);
+    return {
+      top: box.top + (parseFloat(cs.paddingTop) || 0),
+      left: box.left + (parseFloat(cs.paddingLeft) || 0),
+      width: box.width,
+      height: box.height
+    };
+  }
+
+  function frbPaddedCoords(pos, fullText){
+    var coords = frbMeasureOffset(pos, fullText);
+    var cs = getComputedStyle(codeInput);
+    return {
+      top: coords.top + (parseFloat(cs.paddingTop) || 0),
+      left: coords.left + (parseFloat(cs.paddingLeft) || 0)
+    };
+  }
+
+  // Scrolls codeInput so the match at `pos` is actually on screen —
+  // vertically centered, and (in no-wrap mode, where a long line can run
+  // off to the right) nudged into view horizontally too. Never touches
+  // focus, so it can run on every keystroke in the find field without
+  // ever interrupting typing there.
+  function frbScrollToMatch(pos){
+    var f = files[activeFile];
+    if(!f) return;
+    var coords = frbPaddedCoords(pos, f.content);
+    var lineHeightPx = parseFloat(getComputedStyle(codeInput).lineHeight) || 20;
+    var targetTop = coords.top - (codeInput.clientHeight / 2) + (lineHeightPx / 2);
+    codeInput.scrollTop = Math.max(0, targetTop);
+    if(!wordWrap){
+      var margin = 40;
+      var visibleLeft = codeInput.scrollLeft;
+      var visibleRight = visibleLeft + codeInput.clientWidth;
+      if(coords.left < visibleLeft + margin){
+        codeInput.scrollLeft = Math.max(0, coords.left - margin);
+      } else if(coords.left > visibleRight - margin){
+        codeInput.scrollLeft = coords.left - codeInput.clientWidth + margin;
+      }
+    }
+    syncScroll();
+  }
+
+  // Paints the actual visible highlight — a real positioned box, not a
+  // browser text-selection color (that turned out not to render
+  // consistently everywhere this page runs, which is why the match
+  // wasn't showing up at all in some in-app webviews). This is always
+  // visible the instant its position is set, everywhere.
+  function frbDrawHighlightBox(start, end){
+    var f = files[activeFile];
+    if(!f){ frbClearHighlightBox(); return; }
+    var span = frbPaddedSpan(start, end, f.content);
+    var lineHeightPx = parseFloat(getComputedStyle(codeInput).lineHeight) || 20;
+    findHighlightBox.style.top = span.top + 'px';
+    findHighlightBox.style.left = span.left + 'px';
+    findHighlightBox.style.width = Math.max(4, span.width) + 'px';
+    findHighlightBox.style.height = (span.height || lineHeightPx) + 'px';
+    findHighlightBox.classList.add('show');
+  }
+
+  function frbClearHighlightBox(){
+    findHighlightBox.classList.remove('show');
+  }
+
+  // Selects the match, draws the visible highlight box over it, and
+  // scrolls it into view — all without moving focus, so it can run on
+  // every keystroke in the Find field without ever interrupting typing.
+  function frbRevealMatch(start, end){
+    codeInput.setSelectionRange(start, end);
+    frbDrawHighlightBox(start, end);
+    frbScrollToMatch(start);
+  }
+
+  function frbUpdateCount(){
+    if(!frbQuery){ findCountEl.textContent = ''; return; }
+    if(!frbMatches.length){ findCountEl.textContent = 'No results'; return; }
+    findCountEl.textContent = (frbCurrentIndex + 1) + ' / ' + frbMatches.length;
+  }
+
+  // Re-runs the search against the active file's current content and
+  // jumps to whichever match sits nearest at-or-after the given
+  // position (wrapping to the first match if none do).
+  function frbSearch(fromPos){
+    var f = files[activeFile];
+    frbQuery = findInput.value;
+    if(!f || !frbQuery){
+      frbMatches = [];
+      frbCurrentIndex = -1;
+      frbClearHighlightBox();
+      frbUpdateCount();
+      return;
+    }
+    frbMatches = findAllMatches(f.content, frbQuery);
+    if(!frbMatches.length){
+      frbCurrentIndex = -1;
+      frbClearHighlightBox();
+      frbUpdateCount();
+      return;
+    }
+    var chosen = 0;
+    for(var i = 0; i < frbMatches.length; i++){
+      if(frbMatches[i] >= fromPos){ chosen = i; break; }
+    }
+    frbCurrentIndex = chosen;
+    frbRevealMatch(frbMatches[frbCurrentIndex], frbMatches[frbCurrentIndex] + frbQuery.length);
+    frbUpdateCount();
+  }
+
+  function frbStep(direction){
+    if(!frbMatches.length){ frbSearch(0); return; }
+    frbCurrentIndex += direction;
+    if(frbCurrentIndex < 0) frbCurrentIndex = frbMatches.length - 1;
+    if(frbCurrentIndex >= frbMatches.length) frbCurrentIndex = 0;
+    frbRevealMatch(frbMatches[frbCurrentIndex], frbMatches[frbCurrentIndex] + frbQuery.length);
+    frbUpdateCount();
+  }
+
+  // Replaces one match (by its start offset) through the same
+  // execCommand path a real keystroke would take.
+  function frbReplaceOne(matchStart, replacement){
+    codeInput.focus();
+    codeInput.setSelectionRange(matchStart, matchStart + frbQuery.length);
+    document.execCommand('insertText', false, replacement);
+  }
+
+  function frbReplaceCurrent(){
+    var query = findInput.value;
+    if(!query){ showToast('Type something to find first'); return; }
+    var f = files[activeFile];
+    if(!f){ showToast('No file open'); return; }
+    frbQuery = query;
+    frbMatches = findAllMatches(f.content, frbQuery);
+    if(!frbMatches.length){ frbCurrentIndex = -1; frbClearHighlightBox(); frbUpdateCount(); showToast('No matches found'); return; }
+    if(frbCurrentIndex < 0 || frbCurrentIndex >= frbMatches.length) frbCurrentIndex = 0;
+    var matchStart = frbMatches[frbCurrentIndex];
+    var replacement = replaceInput.value;
+    frbReplaceOne(matchStart, replacement);
+    var f2 = files[activeFile];
+    var nextPos = matchStart + replacement.length;
+    frbMatches = findAllMatches(f2.content, frbQuery);
+    if(!frbMatches.length){
+      frbCurrentIndex = -1;
+      frbClearHighlightBox();
+    } else {
+      var chosen = 0;
+      for(var i = 0; i < frbMatches.length; i++){
+        if(frbMatches[i] >= nextPos){ chosen = i; break; }
+      }
+      frbCurrentIndex = chosen;
+      frbRevealMatch(frbMatches[frbCurrentIndex], frbMatches[frbCurrentIndex] + frbQuery.length);
+    }
+    frbUpdateCount();
+  }
+
+  // Replaces every match in one go. Works right-to-left through the
+  // offsets found in the ORIGINAL content, so replacing one match
+  // never shifts the still-to-be-replaced offsets that come before it.
+  function frbReplaceAll(){
+    var query = findInput.value;
+    if(!query){ showToast('Type something to find first'); return; }
+    var f = files[activeFile];
+    if(!f){ showToast('No file open'); return; }
+    frbQuery = query;
+    var matches = findAllMatches(f.content, frbQuery);
+    if(!matches.length){ showToast('No matches found'); return; }
+    var replacement = replaceInput.value;
+    for(var i = matches.length - 1; i >= 0; i--){
+      frbReplaceOne(matches[i], replacement);
+    }
+    frbMatches = [];
+    frbCurrentIndex = -1;
+    frbClearHighlightBox();
+    frbUpdateCount();
+    showToast('Replaced ' + matches.length + (matches.length === 1 ? ' match' : ' matches'));
+  }
+
+  function openFindBar(){
+    if(!activeFile){ showToast('Open a file first'); return; }
+    closeDrawer();
+    moreMenu.classList.remove('show');
+    findReplaceBar.classList.add('show');
+    fabEl.classList.add('fab-hidden');
+    var selStart = codeInput.selectionStart, selEnd = codeInput.selectionEnd;
+    if(selEnd > selStart){
+      var sel = codeInput.value.slice(selStart, selEnd);
+      if(sel.indexOf('\n') === -1) findInput.value = sel;
+    }
+    frbSearch(codeInput.selectionStart);
+    setTimeout(function(){ findInput.focus(); findInput.select(); }, 30);
+  }
+
+  function closeFindBar(){
+    findReplaceBar.classList.remove('show');
+    frbMatches = [];
+    frbCurrentIndex = -1;
+    frbClearHighlightBox();
+    codeInput.focus();
+  }
+
+  function findReplaceBarOpen(){
+    return findReplaceBar.classList.contains('show');
+  }
+
+  findInput.addEventListener('input', function(){
+    frbSearch(frbMatches.length ? frbMatches[frbCurrentIndex] : 0);
+  });
+  findInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      if(e.shiftKey) frbStep(-1); else frbStep(1);
+    } else if(e.key === 'Escape'){
+      e.preventDefault();
+      closeFindBar();
+    }
+  });
+  replaceInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      frbReplaceCurrent();
+    } else if(e.key === 'Escape'){
+      e.preventDefault();
+      closeFindBar();
+    }
+  });
+  findPrevBtn.addEventListener('click', function(){ frbStep(-1); });
+  findNextBtn.addEventListener('click', function(){ frbStep(1); });
+  findCloseBtn.addEventListener('click', closeFindBar);
+  replaceBtn.addEventListener('click', frbReplaceCurrent);
+  replaceAllBtn.addEventListener('click', frbReplaceAll);
 
   /* ============================================================
      RUN / PREVIEW  (the connect-tag compiler)
@@ -3145,6 +3786,18 @@
     previewConsoleDot.classList.remove('show');
   }
 
+  // Alt+C: opens the preview (with its console) if it's closed;
+  // toggles the console panel on/off if the preview is already open.
+  function toggleConsolePanel(){
+    if(!previewOverlay.classList.contains('show')){
+      openPreviewWithConsole();
+      return;
+    }
+    var showing = previewConsolePanel.classList.toggle('show');
+    if(showing) previewConsoleDot.classList.remove('show');
+    setMenuCheck('chkConsole', showing);
+  }
+
   function openPreviewInBrowser(){
     var name = findHtmlToRun();
     if(!name){ showToast('Create or open an HTML file first'); return; }
@@ -3255,6 +3908,7 @@
     line.textContent = text;
     terminalBody.appendChild(line);
     terminalBody.scrollTop = terminalBody.scrollHeight;
+    return line;
   }
 
   // Echoes a typed command as its own two-tone prompt line (dim ">" +
@@ -3279,10 +3933,14 @@
     if(!cmd) return;
     termPrintCmd(cmd);
     terminalInput.value = '';
+    if(/^ai\./i.test(cmd)){
+      handleAiCommand(cmd.replace(/^ai\./i, '').trim());
+      return;
+    }
     var parts = cmd.split(' ');
     var head = parts[0];
     if(head === 'help'){
-      termPrint('Commands: help, ls, open <file>, run, clear, echo <text>');
+      termPrint('Commands: help, ls, open <file>, run, clear, echo <text>, ai.<what you want>, ai.project(<name>)');
     } else if(head === 'ls'){
       termPrint(Object.keys(files).join('  '));
     } else if(head === 'open'){
@@ -3300,6 +3958,472 @@
       termPrint(cmd + ': command not found', 'error');
     }
   });
+
+  /* ============================================================
+     AI ASSISTANT (terminal "ai.<instruction>" commands)
+     Talks to the Gemini API directly from the browser using a key
+     the user pastes into Settings (never hardcoded, never sent
+     anywhere but Google). It streams the response so replies type
+     out live and generated code is written into the actual editor
+     character-by-character in real time, rather than appearing all
+     at once after a wait.
+
+     Protocol: rather than asking the model for JSON (which turned
+     out to be fragile \u2014 code containing quotes/newlines routinely
+     broke JSON string-escaping and silently dropped every action),
+     the model is asked for a small line-based plain-text format that
+     can be parsed incrementally as it streams in, with raw code
+     never needing any escaping at all:
+
+       <reply text, one or more lines>
+       END-REPLY
+       ACTION <name> key=value key=value...
+       ACTION writeCode filename=x mode=replace nonce=ab12cd
+       <raw file content, verbatim, until:>
+       >>>END-ab12cd
+  ============================================================ */
+  var AI_MODEL = 'gemini-3.5-flash';
+  var AI_STREAM_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/' + AI_MODEL + ':streamGenerateContent?alt=sse';
+
+  var AI_SYSTEM_PROMPT = [
+    'You are an embedded AI assistant inside "Code Studio", a mobile browser-based code editor, triggered by the user typing "ai.<instruction>" into its terminal.',
+    'You are given a JSON snapshot of the editor state: open files (with content), other file names that exist but are not open, and current editor settings.',
+    'The snapshot may also include "projectMode": true with a "projectName" (and optionally "projectLanguage"), which means the user explicitly asked to start a brand new project. In that case, scaffold real, working starter code for it \u2014 not just a one-line stub \u2014 using a filename based on projectName with an extension matching projectLanguage if given, otherwise whatever suits the request. Use more than one ACTION writeCode block (e.g. index.html + style.css + script.js) only if the project genuinely calls for it.',
+    'Otherwise (no projectMode), treat the request as a small, scoped edit: change only what was asked, leave unrelated code alone, and don\'t create new files unless asked to.',
+    '',
+    'Reply using ONLY this exact plain-text protocol \u2014 no markdown, no code fences, no JSON, nothing outside it:',
+    '',
+    '<one or more lines of a short, friendly reply for the user>',
+    'END-REPLY',
+    '<zero or more ACTION lines, one per line, see grammar below>',
+    '',
+    'ACTION grammar (each on its own line, space-separated key=value pairs after the action name, no spaces around =):',
+    '  ACTION setWordWrap value=true|false',
+    '  ACTION setMinimap value=true|false',
+    '  ACTION setTypingHelpers value=true|false',
+    '  ACTION setFontSize value=<integer 6-30>',
+    '  ACTION runPreview',
+    '  ACTION writeCode filename=<name, or omit to target the currently active file> mode=replace|append|insertAtCursor nonce=<a random 6-character alphanumeric string you invent>',
+    '    Immediately follow that ACTION line with the raw file content, EXACTLY as it should appear in the file \u2014 no fences, no markdown, no commentary \u2014 then end it with a line that is EXACTLY: >>>END-<the same nonce>',
+    '',
+    'Rules:',
+    '- Always end the reply section with a line that is exactly END-REPLY, even if the reply is one line.',
+    '- For a settings/action request ("turn on word wrap", "make the font bigger"), emit the matching ACTION line(s) and keep the reply short.',
+    '- For a code request (new function, new file, fix, feature, or projectMode scaffold), use ACTION writeCode. Prefer mode=insertAtCursor or mode=append so you don\'t destroy unrelated existing code, unless the user clearly wants the whole file rewritten, the file is empty/a stub, or this is a projectMode scaffold \u2014 then use mode=replace.',
+    '- Only include filename= when writing to a file other than the active one, or creating a new one.',
+    '- The nonce must not otherwise appear anywhere in the code you write, and must be unique per writeCode action this turn.',
+    '- If the instruction is just a question, give the answer in the reply and emit no ACTION lines.',
+    '- Never invent the contents of a file you weren\'t shown \u2014 if you need one that wasn\'t included, say so in the reply and ask the user to open it first.',
+    '- Nothing may appear before the reply text or after the final ACTION line (or its code block).',
+    '- Pay close attention to exactly what the user asked to change \u2014 if they name a specific setting or file, act on that one, not a similar-sounding alternative.',
+    '- ACTION runPreview is opt-in only: emit it if, and only if, the user\'s instruction itself explicitly asks to run, preview, test, or see the result (words like "run", "preview", "show me", "open it", "test it", "see it", "check it out"). Writing or editing code \u2014 including scaffolding a whole project \u2014 is never by itself a request to preview it. Never add ACTION runPreview just because you created or edited an HTML file. Leave it out unless asked.',
+    '',
+    'Example \u2014 user says "turn on word wrap and make me a dark theme css file":',
+    'Turned on word wrap and added a dark theme stylesheet.',
+    'END-REPLY',
+    'ACTION setWordWrap value=true',
+    'ACTION writeCode filename=dark-theme.css mode=replace nonce=x7k2pq',
+    'body {',
+    '  background: #111;',
+    '  color: #eee;',
+    '}',
+    '>>>END-x7k2pq'
+  ].join('\n');
+
+  // Short in-session memory so follow-ups ("no, small caps not that") have
+  // context. Resets on reload, same as the terminal scrollback itself.
+  var aiHistory = [];
+
+  function buildAiContext(extra){
+    var openFilesContext = openTabs.slice(0, 8).map(function(name){
+      var ff = files[name];
+      if(!ff) return null;
+      return { name: name, type: ff.type, active: name === activeFile, content: (ff.content || '').slice(0, 8000) };
+    }).filter(Boolean);
+    var ctx = {
+      activeFile: activeFile,
+      openFiles: openFilesContext,
+      otherFiles: Object.keys(files).filter(function(n){ return openTabs.indexOf(n) === -1; }),
+      settings: { wordWrap: wordWrap, fontSize: fontSize, minimap: minimapEnabled, typingHelpers: typingHelpers }
+    };
+    if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra, k)) ctx[k] = extra[k]; } }
+    return ctx;
+  }
+
+  // Incremental parser for the line-based protocol above. Text arrives in
+  // arbitrary-sized chunks that don't respect line boundaries, so it's fed
+  // through push() and buffers until it has whole lines to act on.
+  function createAiStreamParser(handlers){
+    var state = 'reply'; // 'reply' | 'idle' | 'code'
+    var carry = '';
+    var replyText = '';
+    var codeNonce = null;
+
+    function handleLine(line){
+      if(state === 'reply'){
+        if(line === 'END-REPLY'){ state = 'idle'; handlers.onReplyDone(replyText); return; }
+        replyText += (replyText ? '\n' : '') + line;
+        handlers.onReplyChunk(replyText);
+        return;
+      }
+      if(state === 'idle'){
+        if(!line) return;
+        var m = /^ACTION\s+(\S+)(.*)$/.exec(line);
+        if(!m) return; // ignore stray/unrecognized lines rather than error out
+        var name = m[1];
+        var params = {};
+        var re = /(\w+)=(\S+)/g, mm;
+        while((mm = re.exec(m[2] || ''))){ params[mm[1]] = mm[2]; }
+        if(name === 'writeCode'){
+          codeNonce = params.nonce || 'x';
+          state = 'code';
+          handlers.onCodeStart({ filename: params.filename || null, mode: params.mode || 'replace' });
+          return;
+        }
+        handlers.onAction(name, params);
+        return;
+      }
+      if(state === 'code'){
+        if(line === '>>>END-' + codeNonce){ state = 'idle'; handlers.onCodeEnd(); return; }
+        handlers.onCodeChunk(line + '\n');
+      }
+    }
+
+    return {
+      push: function(text){
+        carry += text;
+        var idx;
+        while((idx = carry.indexOf('\n')) !== -1){
+          handleLine(carry.slice(0, idx).replace(/\r$/, ''));
+          carry = carry.slice(idx + 1);
+        }
+      },
+      end: function(){
+        if(carry){ handleLine(carry); carry = ''; }
+        if(state === 'reply') handlers.onReplyDone(replyText);
+      }
+    };
+  }
+
+  function streamGeminiAssistant(instruction, contextExtra, cbs){
+    var userText = 'User command: ' + instruction + '\n\nCurrent editor state (JSON):\n' + JSON.stringify(buildAiContext(contextExtra));
+    var contents = aiHistory.map(function(turn){ return { role: turn.role, parts: [{ text: turn.text }] }; });
+    contents.push({ role: 'user', parts: [{ text: userText }] });
+    var body = {
+      contents: contents,
+      systemInstruction: { parts: [{ text: AI_SYSTEM_PROMPT }] },
+      generationConfig: { temperature: 0.4, maxOutputTokens: 8192 }
+    };
+    var fullText = '';
+
+    fetch(AI_STREAM_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': aiApiKey },
+      body: JSON.stringify(body)
+    }).then(function(resp){
+      if(!resp.ok){
+        return resp.json().catch(function(){ return null; }).then(function(data){
+          throw new Error((data && data.error && data.error.message) || ('HTTP ' + resp.status));
+        });
+      }
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+
+      function processEvent(block){
+        block.split('\n').forEach(function(line){
+          line = line.trim();
+          if(line.indexOf('data:') !== 0) return;
+          var jsonStr = line.slice(5).trim();
+          if(!jsonStr || jsonStr === '[DONE]') return;
+          try {
+            var obj = JSON.parse(jsonStr);
+            var cand = obj.candidates && obj.candidates[0];
+            var t = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
+            if(t){ fullText += t; cbs.onChunk(t); }
+          } catch(e){ /* partial/malformed SSE fragment \u2014 skip it */ }
+        });
+      }
+
+      function pump(){
+        return reader.read().then(function(res){
+          if(res.done){
+            if(buffer.trim()) processEvent(buffer);
+            aiHistory.push({ role: 'user', text: userText });
+            aiHistory.push({ role: 'model', text: fullText });
+            while(aiHistory.length > 8) aiHistory.shift();
+            cbs.onDone();
+            return;
+          }
+          buffer += decoder.decode(res.value, { stream: true });
+          var events = buffer.split('\n\n');
+          buffer = events.pop();
+          events.forEach(processEvent);
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(e){
+      cbs.onError((e && e.message) ? e.message : String(e));
+    });
+  }
+
+  function applySimpleAiAction(name, params){
+    switch(name){
+      case 'setWordWrap':
+        wordWrap = params.value === 'true';
+        applyWrapSetting();
+        setMenuCheck('chkWordWrap', wordWrap);
+        persist();
+        termPrint('\u2192 word wrap ' + (wordWrap ? 'on' : 'off'), 'ai-pending');
+        break;
+      case 'setMinimap':
+        minimapEnabled = params.value === 'true';
+        updateMinimapAvailability();
+        persist();
+        termPrint('\u2192 minimap ' + (minimapEnabled ? 'on' : 'off'), 'ai-pending');
+        break;
+      case 'setTypingHelpers':
+        typingHelpers = params.value === 'true';
+        persist();
+        termPrint('\u2192 typing helpers ' + (typingHelpers ? 'on' : 'off'), 'ai-pending');
+        break;
+      case 'setFontSize':
+        fontSize = Math.max(6, Math.min(30, parseInt(params.value, 10) || fontSize));
+        document.documentElement.style.setProperty('--code-size', fontSize + 'px');
+        persist();
+        termPrint('\u2192 font size ' + fontSize + 'px', 'ai-pending');
+        break;
+      case 'runPreview':
+        runPreview();
+        termPrint('\u2192 running preview', 'ai-pending');
+        break;
+      default:
+        break; // unknown action name \u2014 ignore rather than error
+    }
+  }
+
+  // --- "ai.project(...)" / "ai.start a new project named X in html" detection ---
+  var PROJECT_ADJECTIVES = ['swift','bright','quiet','bold','lucky','clever','tiny','mighty','amber','nimble'];
+  var PROJECT_NOUNS = ['otter','falcon','comet','nebula','pixel','ember','maple','quartz','harbor','lantern'];
+  function randomProjectName(){
+    var a = PROJECT_ADJECTIVES[Math.floor(Math.random() * PROJECT_ADJECTIVES.length)];
+    var n = PROJECT_NOUNS[Math.floor(Math.random() * PROJECT_NOUNS.length)];
+    return a + '-' + n + '-' + Math.floor(10 + Math.random() * 90);
+  }
+  var LANGUAGE_EXT = { html: 'html', htm: 'html', css: 'css', js: 'js', javascript: 'js', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md' };
+
+  function detectProjectRequest(instruction){
+    var m = /^project\s*\(\s*(.*?)\s*\)\s*$/i.exec(instruction);
+    if(m) return { isProject: true, name: m[1] || '', language: null, rest: '' };
+    m = /^(?:start|create|begin|spin up|make)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?project\b(.*)$/i.exec(instruction);
+    if(m){
+      var tail = m[1] || '';
+      var nameMatch = /(?:named|called)\s+["']?([a-z0-9_\- ]+?)["']?(?=\s+in\s+|\s*$)/i.exec(tail);
+      var langMatch = /\bin\s+([a-z]+)\s*$/i.exec(tail);
+      var name = nameMatch ? nameMatch[1].trim() : '';
+      var lang = langMatch ? langMatch[1].toLowerCase() : null;
+      var spans = [];
+      if(nameMatch) spans.push([nameMatch.index, nameMatch.index + nameMatch[0].length]);
+      if(langMatch) spans.push([langMatch.index, langMatch.index + langMatch[0].length]);
+      spans.sort(function(a, b){ return b[0] - a[0]; }); // remove from the end first so earlier indices stay valid
+      var rest = tail;
+      spans.forEach(function(s){ rest = rest.slice(0, s[0]) + rest.slice(s[1]); });
+      return { isProject: true, name: name, language: lang, rest: rest.trim() };
+    }
+    if(/^(?:new\s+)?project$/i.test(instruction)) return { isProject: true, name: '', language: null, rest: '' };
+    return { isProject: false };
+  }
+
+  function handleAiCommand(instruction){
+    if(!instruction){
+      termPrint('Usage: ai.<what you want> for a quick edit, or ai.project(name) / ai.start a new project named X in html for a full scaffold', 'error');
+      return;
+    }
+    var keyMatch = /^set\s*key\s+(.+)$/i.exec(instruction);
+    if(keyMatch){
+      aiApiKey = keyMatch[1].trim();
+      persist();
+      termPrint('Gemini key saved.', 'ai');
+      return;
+    }
+    if(!aiApiKey){
+      termPrint('No Gemini API key set. Open Settings \u2192 AI assistant, or type ai.setkey <your key>.', 'error');
+      return;
+    }
+
+    // Quick edits (the default) apply changes as soon as they arrive \u2014
+    // no deliberate slow reveal, since there's nothing worth watching in a
+    // one-line tweak. Project requests get the live-typing treatment: code
+    // is throttled onto the screen at a readable pace, and any actions that
+    // arrive while it's still "typing" (like a preview) wait until it's done.
+    var proj = detectProjectRequest(instruction);
+    var liveReveal = proj.isProject;
+    var contextExtra = null;
+    var effectiveInstruction = instruction;
+    if(proj.isProject){
+      var pname = proj.name || randomProjectName();
+      var plang = proj.language ? (LANGUAGE_EXT[proj.language.toLowerCase()] || proj.language.toLowerCase()) : null;
+      contextExtra = { projectMode: true, projectName: pname, projectLanguage: plang };
+      effectiveInstruction = 'Start a new project named "' + pname + '"' +
+        (plang ? ' using ' + plang : '') +
+        (proj.rest ? '. Extra detail from the user: ' + proj.rest : '') +
+        '. Scaffold real, working starter code \u2014 not just a stub.';
+      termPrint('Starting project \u201c' + pname + '\u201d\u2026', 'ai-pending');
+    }
+
+    var pending = termPrint('Thinking\u2026', 'ai-pending');
+    var replyLine = null;
+
+    var codeTargetFile = null, codeIsNew = false;
+    var codePrefix = '', codeSuffix = '', codeLiveContent = '', codeRawBuffer = '';
+    var codeStreamFinished = false, codeRevealTicking = false, codeRevealing = false;
+    var pendingActions = [];
+
+    function liveRenderFrame(){
+      var f = files[codeTargetFile];
+      if(!f) return;
+      f.content = codePrefix + codeLiveContent + codeSuffix;
+      codeInput.value = f.content;
+      highlightCode.innerHTML = highlightFor(f.type, f.content) + '\n';
+      renderLineNumbers();
+      refreshMinimap();
+      codeInput.scrollTop = codeInput.scrollHeight;
+    }
+
+    function commitFile(){
+      var f = files[codeTargetFile];
+      if(f){
+        f.content = codePrefix + codeLiveContent + codeSuffix;
+        f.dirty = true;
+        f.saved = false;
+        renderEditor();
+        renderTitle();
+        renderTabs();
+        persist();
+      }
+      termPrint((codeIsNew ? 'Created ' : 'Updated ') + codeTargetFile, 'ai');
+      codeTargetFile = null;
+      codeRevealing = false;
+      if(pendingActions.length){
+        var q = pendingActions; pendingActions = [];
+        q.forEach(function(a){ applySimpleAiAction(a.name, a.params); });
+      }
+    }
+
+    // Project mode: reveal code a few characters at a time so it's always
+    // visibly "typing", regardless of how bursty the network delivery is.
+    function revealTick(){
+      if(codeRawBuffer.length){
+        var n = Math.max(2, Math.ceil(codeRawBuffer.length / 20));
+        codeLiveContent += codeRawBuffer.slice(0, n);
+        codeRawBuffer = codeRawBuffer.slice(n);
+        liveRenderFrame();
+      }
+      if(!codeRawBuffer.length && codeStreamFinished){
+        commitFile();
+        codeRevealTicking = false;
+        return;
+      }
+      requestAnimationFrame(revealTick);
+    }
+    function startReveal(){
+      if(codeRevealTicking) return;
+      codeRevealTicking = true;
+      requestAnimationFrame(revealTick);
+    }
+
+    // Quick mode: just paint whatever's arrived, no throttle.
+    var quickRenderPending = false;
+    function scheduleQuickRender(){
+      if(quickRenderPending) return;
+      quickRenderPending = true;
+      requestAnimationFrame(function(){ quickRenderPending = false; liveRenderFrame(); });
+    }
+
+    var parser = createAiStreamParser({
+      onReplyChunk: function(text){
+        if(!replyLine){ pending.className = 'log-line ai'; replyLine = pending; }
+        replyLine.textContent = text + ' \u258c';
+        terminalBody.scrollTop = terminalBody.scrollHeight;
+      },
+      onReplyDone: function(text){
+        if(replyLine) replyLine.textContent = text;
+      },
+      onAction: function(name, params){
+        if(liveReveal && codeRevealing){ pendingActions.push({ name: name, params: params }); return; }
+        applySimpleAiAction(name, params);
+      },
+      onCodeStart: function(info){
+        if(liveReveal && codeRevealing){
+          // a second code block started before the first finished animating
+          // — snap the first to completion instantly rather than clobber it.
+          codeRawBuffer = ''; codeStreamFinished = true; commitFile();
+        }
+        var name = info.filename && String(info.filename).trim();
+        if(!name) name = activeFile;
+        if(!name) name = nextUntitledName();
+        codeIsNew = !files[name];
+        if(codeIsNew){
+          files[name] = { content: '', type: extType(name), dirty: false, saved: false };
+          if(openTabs.indexOf(name) === -1) openTabs.push(name);
+          touchRecent(name);
+        }
+        var f = files[name];
+        pushUndoSnapshot(f);
+        if(info.mode === 'append'){
+          codePrefix = f.content + (f.content && !/\n$/.test(f.content) ? '\n' : '');
+          codeSuffix = '';
+        } else if(info.mode === 'insertAtCursor' && name === activeFile){
+          var start = codeInput.selectionStart != null ? codeInput.selectionStart : f.content.length;
+          var end = codeInput.selectionEnd != null ? codeInput.selectionEnd : start;
+          codePrefix = f.content.slice(0, start);
+          codeSuffix = f.content.slice(end);
+        } else {
+          codePrefix = ''; codeSuffix = '';
+        }
+        codeTargetFile = name;
+        codeLiveContent = '';
+        codeRawBuffer = '';
+        codeStreamFinished = false;
+        codeRevealing = true;
+        f.dirty = true;
+        activeFile = name;
+        renderAll(); // switches the visible file so the user watches it get written
+        termPrint((codeIsNew ? 'Creating ' : 'Writing ') + name + '\u2026', 'ai-pending');
+      },
+      onCodeChunk: function(text){
+        if(liveReveal){
+          codeRawBuffer += text;
+          startReveal();
+        } else {
+          codeLiveContent += text;
+          scheduleQuickRender();
+        }
+      },
+      onCodeEnd: function(){
+        if(liveReveal){ codeStreamFinished = true; startReveal(); }
+        else { commitFile(); }
+      }
+    });
+
+    streamGeminiAssistant(effectiveInstruction, contextExtra, {
+      onChunk: function(text){ parser.push(text); },
+      onDone: function(){
+        parser.end();
+        if(codeRevealing){
+          // stream ended without a clean closing fence — flush whatever we have.
+          if(liveReveal){ codeStreamFinished = true; startReveal(); }
+          else { commitFile(); }
+        }
+        if(pending && pending.parentNode && pending !== replyLine) pending.parentNode.removeChild(pending);
+      },
+      onError: function(err){
+        if(pending && pending.parentNode) pending.parentNode.removeChild(pending);
+        termPrint('AI error: ' + err, 'error');
+      }
+    });
+  }
 
   /* ============================================================
      FAB (scroll to top of editor)
@@ -3320,7 +4444,10 @@
     fabEl.classList.add('fab-hidden');
   });
   codeInput.addEventListener('blur', function(){
-    fabEl.classList.remove('fab-hidden');
+    // Don't un-hide the FAB on a blur caused by focus moving into the
+    // find/replace bar — it sits right where the FAB does, so the FAB
+    // should stay hidden until that bar closes, not flash back on.
+    if(!findReplaceBarOpen()) fabEl.classList.remove('fab-hidden');
   });
 
   /* ============================================================
@@ -3337,7 +4464,7 @@
   function updateFabVisibility(vvHeight){
     var keyboardOpen = (window.innerHeight - vvHeight) > 150;
     if(keyboardOpen) fabEl.classList.add('fab-hidden');
-    else if(document.activeElement !== codeInput) fabEl.classList.remove('fab-hidden');
+    else if(document.activeElement !== codeInput && !findReplaceBarOpen()) fabEl.classList.remove('fab-hidden');
   }
 
   if(window.visualViewport){
@@ -3363,6 +4490,77 @@
   window.addEventListener('orientationchange', function(){
     if(wordWrap) setTimeout(renderLineNumbers, 150);
     setTimeout(refreshMinimap, 150);
+  });
+
+  /* ============================================================
+     GLOBAL DESKTOP SHORTCUTS
+     Physical-keyboard-only shortcuts (a phone's on-screen keyboard
+     has no Ctrl/Alt/F-keys to send). Listed out in Settings too —
+     KEYBOARD_SHORTCUTS below is what Settings actually renders, so
+     the two can't drift apart.
+  ============================================================ */
+  var KEYBOARD_SHORTCUTS = [
+    { label: 'Find & Replace', keys: ['Ctrl', 'F'], mobile: 'Tap Ctrl, then F' },
+    { label: 'Next match (in Find bar)', keys: ['Enter'] },
+    { label: 'Previous match (in Find bar)', keys: ['Shift', 'Enter'] },
+    { label: 'Save', keys: ['Ctrl', 'S'], mobile: 'Tap Ctrl, then S' },
+    { label: 'Run / Preview', keys: ['Alt', 'R'], mobile: 'Tap Alt, then R' },
+    { label: 'Refresh preview', keys: ['F5'], mobile: 'Tap \u21bb in the preview' },
+    { label: 'Toggle console', keys: ['Alt', 'C'], mobile: 'Tap Alt, then C' },
+    { label: 'Close find bar / preview', keys: ['Esc'], mobile: 'Tap \u2715 in the find bar or preview' },
+    { label: 'Undo', keys: ['Ctrl', 'Z'], mobile: 'Tap Ctrl, then Z' },
+    { label: 'Redo', keys: ['Ctrl', 'Y'], mobile: 'Tap Ctrl, then Y' },
+    { label: 'Select all', keys: ['Ctrl', 'A'], mobile: 'Tap Ctrl, then A' },
+    { label: 'Copy', keys: ['Ctrl', 'C'], mobile: 'Tap Ctrl, then C' },
+    { label: 'Cut', keys: ['Ctrl', 'X'], mobile: 'Tap Ctrl, then X' },
+    { label: 'Paste', keys: ['Ctrl', 'V'], mobile: 'Tap Ctrl, then V' }
+  ];
+
+  document.addEventListener('keydown', function(e){
+    var key = e.key;
+    var ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+    if(ctrlOrCmd && (key === 'f' || key === 'F')){
+      e.preventDefault();
+      openFindBar();
+      return;
+    }
+    if(ctrlOrCmd && (key === 's' || key === 'S')){
+      e.preventDefault();
+      saveActive();
+      return;
+    }
+    if(key === 'Escape'){
+      if(findReplaceBarOpen()){
+        e.preventDefault();
+        closeFindBar();
+      } else if(previewOverlay.classList.contains('show')){
+        e.preventDefault();
+        hidePreviewOverlay();
+      } else if(modalScrim.classList.contains('show')){
+        e.preventDefault();
+        closeModal();
+      } else if(drawer.classList.contains('show')){
+        e.preventDefault();
+        closeDrawer();
+      }
+      return;
+    }
+    if(e.altKey && (key === 'r' || key === 'R')){
+      e.preventDefault();
+      runPreview();
+      return;
+    }
+    if(key === 'F5'){
+      e.preventDefault();
+      runPreview();
+      return;
+    }
+    if(e.altKey && (key === 'c' || key === 'C')){
+      e.preventDefault();
+      toggleConsolePanel();
+      return;
+    }
   });
 
   /* ============================================================
