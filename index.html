@@ -900,6 +900,24 @@ function render() {
   const app = document.getElementById('app');
   const session = getSession();
   if (!session && currentRoute !== 'login') currentRoute = 'login';
+
+  // Code Studio is a self-contained, full-screen iframe (code-studio.html).
+  // render() fires constantly in the background — e.g. every time the
+  // realtime cloud sync sees new data from another user (applyCloudData) —
+  // and previously that rebuilt #app's entire innerHTML every time, which
+  // tore down and recreated <iframe id="code-studio-frame"> even though
+  // nothing about it needed to change. Recreating an iframe forces the
+  // browser to reload it from scratch, which is exactly the "flicker": a
+  // blank flash plus a full reset of whatever was happening inside the
+  // studio. Since #studio-fullscreen is a fixed, full-viewport overlay that
+  // covers everything else anyway, there's nothing underneath it to update —
+  // so once it's mounted, later render() calls for the same destination are
+  // simply skipped, leaving the iframe (and whatever code is loaded in it)
+  // completely undisturbed.
+  const wantsStudio = (currentRoute === 'admin' && adminNav === 'studio') ||
+                       (currentRoute === 'learner' && learnerNav === 'studio');
+  if (wantsStudio && document.getElementById('code-studio-frame')) return;
+
   if (currentRoute === 'login') app.innerHTML = renderLogin();
   else if (currentRoute === 'admin') app.innerHTML = renderAdmin();
   else if (currentRoute === 'learner') app.innerHTML = renderLearner();
